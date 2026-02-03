@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+
+
+    <xacro:macro name="command_interface_OPCUA" params="name data_type ua_type ua_ns ua_identifier initial_value:=0">
+        <command_interface name="${name}" data_type="${data_type}">
+            <xacro:if value="${initial_value != ''}">
+                <param name="initial_value">${initial_value}</param>
+            </xacro:if>
+            <param name="ua_type">${ua_type}</param>
+            <param name="ua_ns">${ua_ns}</param>
+            <param name="ua_identifier">${ua_identifier}</param>
+        </command_interface>
+    </xacro:macro>
+
+    <xacro:macro name="state_interface_OPCUA" params="name data_type ua_type ua_ns ua_identifier initial_value:=0">
+        <state_interface name="${name}" data_type="${data_type}">
+            <xacro:if value="${initial_value != ''}">
+                <param name="initial_value">${initial_value}</param>
+            </xacro:if>
+            <param name="ua_type">${ua_type}</param>
+            <param name="ua_ns">${ua_ns}</param>
+            <param name="ua_identifier">${ua_identifier}</param>
+        </state_interface>
+    </xacro:macro>
+
+</robot>

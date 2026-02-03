@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+    
+    <xacro:include filename="$(find opcua_bringup)/urdf/control/opcua_interfaces.ros2_control.xacro"/>
+
+    <xacro:macro name="opcua_ros2_control" params="
+                name
+                mock_hardware:=false
+                mock_sensor_commands:=false">
+
+        <ros2_control name="${name}" type="system">
+            <hardware>
+                <xacro:if value="${mock_hardware}">
+                    <plugin>mock_components/GenericSystem</plugin>
+                    <param name="mock_sensor_commands">${mock_sensor_commands}</param>
+                </xacro:if>
+                <xacro:unless value="${mock_hardware}">
+                    <plugin>opcua_hardware_interface/OPCUAHardwareInterface</plugin>
+                    <param name="ip">192.168.1.109</param>
+                    <param name="port">4840</param>
+                    <param name="user">admin</param>
+                    <param name="password">ua_password</param>
+                </xacro:unless>
+            </hardware>
+            
+            <!-- These interfaces can be declared for any component - joint, gpio or sensor -->
+
+            <gpio name="gripper">
+                <xacro:command_interface_OPCUA name="close" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="19" initial_value="true"/>
+                <xacro:command_interface_OPCUA name="cose" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="20" initial_value="false"/>
+            </gpio>
+            <sensor name="gripper_sensor">
+                <xacro:state_interface_OPCUA name="object_sensor" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="109" initial_value="true"/>
+            </sensor>
+
+        </ros2_control>
+
+    </xacro:macro>
+
+</robot>
