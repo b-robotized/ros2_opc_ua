@@ -25,12 +25,15 @@
             
             <!-- These interfaces can be declared for any component - joint, gpio or sensor -->
 
-            <gpio name="gripper">
+            <!-- <gpio name="gripper">
                 <xacro:command_interface_OPCUA name="close" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="19" initial_value="true"/>
                 <xacro:command_interface_OPCUA name="cose" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="20" initial_value="false"/>
             </gpio>
             <sensor name="gripper_sensor">
                 <xacro:state_interface_OPCUA name="object_sensor" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="109" initial_value="true"/>
+            </sensor> -->
+             <sensor name="my_integer">
+                <xacro:state_interface_OPCUA name="my_integer_interface" ua_type="UA_Int32" ua_ns="1" ua_identifier="1"/>
             </sensor>
 
         </ros2_control>

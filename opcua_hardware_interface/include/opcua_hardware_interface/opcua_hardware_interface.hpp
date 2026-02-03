@@ -19,7 +19,6 @@ namespace opcua_hardware_interface
 {
     enum class UAType
     {
-        // Using enum instead of raw strings for faster iterations in read/write
         UA_Boolean,
         UA_Byte,
         UA_Int16,
@@ -31,6 +30,14 @@ namespace opcua_hardware_interface
         UA_Float,
         UA_Double,
         UNKNOWN
+    };
+
+    struct StateInterfaceUANode
+    {
+        std::string state_interface_name;
+        opcua::NamespaceIndex ua_ns; // uint16_t (c.f common.hpp)
+        uint32_t ua_identifier;
+        UAType ua_type;
     };
 
     class OPCUAHardwareInterface : public hardware_interface::SystemInterface
@@ -65,9 +72,11 @@ namespace opcua_hardware_interface
         UAType strToUAType(const std::string &type_str);
         size_t UAToROS2Type(UAType ua_type);
 
+        opcua::Client client;
         bool configure_ua_client();
 
-        opcua::Client client;
+        void populate_state_interfaces_node_ids();
+        std::vector<StateInterfaceUANode> state_interfaces_nodes; // Contains the node IDs cooresponding to the state interfaces.
     };
 
 } // namespace opcua_hardware_interface

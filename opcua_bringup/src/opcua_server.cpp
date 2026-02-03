@@ -76,7 +76,7 @@ int main()
     opcua::Node parentNode{server, opcua::ObjectId::ObjectsFolder};
 
     opcua::Node myIntegerNode = parentNode.addVariable(
-        {1, "TheAnswer"},           //! nodeId (ns=1 ; s=TheAnswer)
+        {1, 1},                     //! nodeId (ns=1 ; s=TheAnswer)
         "The Answer",               //! browse name
         opcua::VariableAttributes{} //! attributes (c.f node.hpp line 156)
             .setDisplayName({"en-US", "The Answer"})
