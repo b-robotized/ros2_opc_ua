@@ -47,6 +47,12 @@ public:
 int main()
 {
     opcua::ServerConfig config;
+
+    // Use handle to access the open62541 methods
+    UA_ServerConfig *ua_server_config = config.handle();
+    std::string ip_address = "192.168.1.109";
+    ua_server_config->customHostname = UA_STRING(ip_address.data()); //! UA_STRING only accepts non const char*
+
     config.setApplicationName("open62541pp server example");
     config.setApplicationUri("urn:open62541pp.server.application");
     config.setProductUri("https://open62541pp.github.io");
@@ -65,11 +71,6 @@ int main()
     config->allowNonePolicyPassword = true;
 #endif
 
-    // Use handle to access the open62541 methods
-    UA_ServerConfig *ua_server_config = config.handle();
-    std::string ip_address = "192.168.1.109";
-    ua_server_config->customHostname = UA_STRING(ip_address.data()); //! UA_STRING only accepts non const char*
-
     opcua::Server server{std::move(config)};
 
     // Add a variable node to the Objects node
@@ -79,6 +80,7 @@ int main()
         {1, 1},                     //! nodeId (ns=1 ; s=TheAnswer)
         "The Answer",               //! browse name
         opcua::VariableAttributes{} //! attributes (c.f node.hpp line 156)
+            .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
             .setDisplayName({"en-US", "The Answer"})
             .setDescription({"en-US", "Answer to the Ultimate Question of Life"})
             .setDataType<int>());
