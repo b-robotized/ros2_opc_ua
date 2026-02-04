@@ -34,10 +34,19 @@ namespace opcua_hardware_interface
 
     struct StateInterfaceUANode
     {
-        std::string state_interface_name;
         opcua::NamespaceIndex ua_ns; // uint16_t (c.f common.hpp)
         uint32_t ua_identifier;
         UAType ua_type;
+        std::string state_interface_name;
+    };
+
+    struct CommandInterfaceUANode
+    {
+        opcua::NamespaceIndex ua_ns; // uint16_t (c.f common.hpp)
+        uint32_t ua_identifier;
+        UAType ua_type;
+        std::string command_interface_name;
+        std::string fallback_state_interface_name;
     };
 
     class OPCUAHardwareInterface : public hardware_interface::SystemInterface
@@ -76,7 +85,10 @@ namespace opcua_hardware_interface
         bool configure_ua_client();
 
         void populate_state_interfaces_node_ids();
-        std::vector<StateInterfaceUANode> state_interfaces_nodes; // Contains the node IDs cooresponding to the state interfaces.
+        void populate_command_interfaces_node_ids();
+
+        std::vector<StateInterfaceUANode> state_interfaces_nodes;     // Contains the node IDs cooresponding to the state interfaces.
+        std::vector<CommandInterfaceUANode> command_interfaces_nodes; // Contains the node IDs cooresponding to the command interfaces.
     };
 
 } // namespace opcua_hardware_interface
