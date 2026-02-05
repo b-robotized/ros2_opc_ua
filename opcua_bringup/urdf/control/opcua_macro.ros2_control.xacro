@@ -37,9 +37,9 @@
                 <xacro:state_interface_OPCUA name="my_integer_interface" data_type="double" ua_type="UA_Int32" ua_ns="1" ua_identifier="1"/> 
             </sensor>
 
-            <!-- <gpio name="my_integer_command"> -->
-                <!-- <xacro:command_interface_OPCUA name="my_integer_interface" data_type="double" ua_type="UA_Int32" ua_ns="1" ua_identifier="1" initial_value="42.0"/>  -->
-            <!-- </gpio> -->
+            <gpio name="my_integer_command">
+                <xacro:command_interface_OPCUA name="my_integer_interface" data_type="double" ua_type="UA_Int32" ua_ns="1" ua_identifier="1" initial_value="42.0"/> 
+            </gpio>
 
         </ros2_control>
 

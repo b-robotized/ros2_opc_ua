@@ -109,6 +109,7 @@ namespace opcua_hardware_interface
 
     void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
     {
+        RCLCPP_INFO(getLogger(), "\tEstablishing correspondances between State interfaces and UA Nodes... ");
 
         // Go through all types of state interfaces defined in the URDF : joint, sensor, gpio
         auto init_state_interface_ua_nodes =
@@ -144,6 +145,7 @@ namespace opcua_hardware_interface
 
     void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
     {
+        RCLCPP_INFO(getLogger(), "\tEstablishing correspondances between Command interfaces and UA Nodes... ");
 
         // Go through all types of command interfaces defined in the URDF : joint, gpio
         auto init_command_interface_ua_nodes =
@@ -151,11 +153,8 @@ namespace opcua_hardware_interface
         {
             for (const auto &[name, descr] : type_command_interfaces_)
             {
-                // TODO: Add initial value
                 CommandInterfaceUANode command_interface_ua_node;
-
                 command_interface_ua_node.command_interface_name = name;
-                command_interface_ua_node.fallback_state_interface_name = "";
 
                 // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and uint32_t
                 std::string ua_ns_str = descr.interface_info.parameters.at("ua_ns");
@@ -166,11 +165,27 @@ namespace opcua_hardware_interface
 
                 command_interface_ua_node.ua_type = strToUAType(descr.interface_info.parameters.at("ua_type"));
 
+                // Look for the fallback_state_interface with the same NodeId
+                command_interface_ua_node.fallback_state_interface_name = "";
+                auto same_nodeid_state_interface_node = [&command_interface_ua_node](const auto &state_interface_ua_node)
+                {
+                    return (state_interface_ua_node.ua_ns == command_interface_ua_node.ua_ns) && (state_interface_ua_node.ua_identifier == command_interface_ua_node.ua_identifier);
+                };
+                auto it = find_if(state_interfaces_nodes.begin(), state_interfaces_nodes.end(),
+                                  same_nodeid_state_interface_node);
+
+                // Found a fallback state interface:
+                if (it != state_interfaces_nodes.end())
+                {
+                    command_interface_ua_node.fallback_state_interface_name = it->state_interface_name;
+                    RCLCPP_INFO(getLogger(), "\tThe following command interface: %s has a fallback state interface: %s.", command_interface_ua_node.command_interface_name.c_str(), command_interface_ua_node.fallback_state_interface_name.c_str());
+                }
+
                 command_interfaces_nodes.push_back(command_interface_ua_node);
 
-                std::cout << "command_interface_ua_node : " << command_interface_ua_node.command_interface_name << std::endl;
-                std::cout << "command_interface_ua_node.ua_ns : " << command_interface_ua_node.ua_ns << std::endl;
-                std::cout << "command_interface_ua_node.ua_identifier : " << command_interface_ua_node.ua_identifier << std::endl;
+                // std::cout << "command_interface_ua_node : " << command_interface_ua_node.command_interface_name << std::endl;
+                // std::cout << "command_interface_ua_node.ua_ns : " << command_interface_ua_node.ua_ns << std::endl;
+                // std::cout << "command_interface_ua_node.ua_identifier : " << command_interface_ua_node.ua_identifier << std::endl;
             }
         };
 
