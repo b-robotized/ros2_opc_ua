@@ -100,6 +100,19 @@ int main()
             .setValueRank(ValueRank::OneDimension) //! (c.f common.hpp line 157)
             .setValue(opcua::Variant{currentPos}));
 
+    std::vector<UA_Boolean> commandPos = {UA_FALSE, UA_TRUE};
+    // std::bool is not supported, UA_Boolean is uint8_t
+    opcua::Node commandPosNode = parentNode.addVariable(
+        {1, 11},
+        "Command Position Array",
+        opcua::VariableAttributes{}
+            .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+            .setDisplayName({"en-US", "Array of boolean command position"})
+            .setDataType(DataTypeId::Boolean)
+            .setArrayDimensions({0})               //! single dimension but unknown in size
+            .setValueRank(ValueRank::OneDimension) //! (c.f common.hpp line 157)
+            .setValue(opcua::Variant{commandPos}));
+
     // Write a value (attribute) to the node
     // currentPosNode.writeValue(opcua::Variant{0.15, -1.24});
 
@@ -107,6 +120,8 @@ int main()
     std::cout << "The answer is: " << myIntegerNode.readValue().to<int>() << std::endl;
     std::cout << "The cuurentPos is: [ " << currentPosNode.readValue().to<std::vector<float>>().at(0)
               << " , " << currentPosNode.readValue().to<std::vector<float>>().at(1) << " ]." << std::endl;
+    std::cout << "The commandPos is: [ " << commandPosNode.readValue().to<std::vector<bool>>().at(0)
+              << " , " << commandPosNode.readValue().to<std::vector<bool>>().at(1) << " ]." << std::endl;
 
     server.run();
 }

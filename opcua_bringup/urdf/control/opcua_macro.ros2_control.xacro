@@ -30,10 +30,15 @@
                 <xacro:state_interface_OPCUA name="my_integer_interface" data_type="double" ua_type="UA_Int32" ua_ns="1" ua_identifier="1"/> 
                 <xacro:state_interface_OPCUA name="currentPos_0" data_type="double" ua_type="UA_Float" ua_ns="1" ua_identifier="10" n_elements="2" index="0"/> 
                 <xacro:state_interface_OPCUA name="currentPos_1" data_type="double" ua_type="UA_Float" ua_ns="1" ua_identifier="10" n_elements="2" index="1"/> 
+
+                <xacro:state_interface_OPCUA name="commandPos_0" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="0"/> 
+                <xacro:state_interface_OPCUA name="commandPos_1" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="1"/> 
             </sensor>
 
-            <gpio name="my_integer_command">
+            <gpio name="robot_command">
                 <xacro:command_interface_OPCUA name="my_integer_interface" data_type="double" ua_type="UA_Int32" ua_ns="1" ua_identifier="1" initial_value="42.0"/> 
+                 <xacro:command_interface_OPCUA name="commandPos_0" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="0" initial_value="0"/> 
+                <xacro:command_interface_OPCUA name="commandPos_1" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="1" initial_value="1"/> 
             </gpio>
 
             <!-- <gpio name="gripper">

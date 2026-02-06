@@ -166,17 +166,10 @@ namespace opcua_hardware_interface
                 // OPC UA Array was already processed
                 if (it != state_interfaces_nodes.end())
                 {
-                    // TODO: We suppose for now that the array indexed are ordered in the URDF
-                    // TODO: Implement a more robust way of processing the URDF info (map<index, interface_name>?)
-
-                    RCLCPP_INFO(getLogger(),
-                                "State interface %s has already been processed", name.c_str());
                     it->state_interface_names.emplace(std::make_pair(index, name));
                 }
                 else
                 {
-                    RCLCPP_INFO(getLogger(),
-                                "State interface %s has NOT been processed", name.c_str());
                     // Add the name to the current interface_ua_node instead
                     current_state_interface_ua_node.state_interface_names.emplace(std::make_pair(index, name));
                     state_interfaces_nodes.push_back(current_state_interface_ua_node);
@@ -194,142 +187,91 @@ namespace opcua_hardware_interface
     {
         RCLCPP_INFO(getLogger(), "\tEstablishing correspondances between Command interfaces and UA Nodes... ");
 
+        auto init_command_interface_ua_nodes = [&](const auto &type_command_interfaces_)
+        {
+            for (const auto &[name, descr] : type_command_interfaces_)
+            {
+                std::string ua_ns_str;
+                std::string ua_id_str;
+                std::string fallback_name = "";
+                UAType ua_type;
+                size_t num_elements = 1;
+                size_t index = 0;
+
+                // Check if all necessary parameters exist
+                try
+                {
+                    ua_ns_str = descr.interface_info.parameters.at("ua_ns");
+                    ua_id_str = descr.interface_info.parameters.at("ua_identifier");
+                    ua_type = strToUAType(descr.interface_info.parameters.at("ua_type"));
+
+                    // Check if state_interface refers to an OPC UA Array element
+                    if (descr.interface_info.parameters.count("n_elements"))
+                    {
+                        num_elements = std::stoul(descr.interface_info.parameters.at("n_elements"));
+                    }
+                    if (descr.interface_info.parameters.count("index"))
+                    {
+                        index = std::stoul(descr.interface_info.parameters.at("index"));
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    RCLCPP_ERROR(getLogger(), "Error parsing PLC parameters for command interface '%s': %s. Check URDF.",
+                                 name.c_str(), e.what());
+                    continue;
+                }
+
+                CommandInterfaceUANode current_command_interface_ua_node;
+
+                // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and uint32_t
+                [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(), current_command_interface_ua_node.ua_ns);
+                [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(), current_command_interface_ua_node.ua_identifier);
+                current_command_interface_ua_node.ua_type = ua_type;
+                current_command_interface_ua_node.num_elements = num_elements;
+
+                /* Fallback State Interface Name = State interface with the same NodeId */
+                auto same_nodeid_state_interface_node = [&current_command_interface_ua_node](const auto &state_interface_ua_node)
+                {
+                    return (state_interface_ua_node.ua_ns == current_command_interface_ua_node.ua_ns) && (state_interface_ua_node.ua_identifier == current_command_interface_ua_node.ua_identifier);
+                };
+                auto it_fallback = find_if(state_interfaces_nodes.begin(), state_interfaces_nodes.end(),
+                                           same_nodeid_state_interface_node);
+
+                // Found a fallback state interface:
+                if (it_fallback != state_interfaces_nodes.end())
+                {
+                    fallback_name = it_fallback->state_interface_names.at(index);
+                    // current_command_interface_ua_node.fallback_state_interface_names.emplace(std::make_pair(index, fallback_name));
+                    RCLCPP_INFO(getLogger(), "\tThe following command interface: %s has a fallback state interface: %s.", name.c_str(), fallback_name.c_str());
+                }
+
+                /* Find if a command_interface with the same NodeId was already processed */
+                auto same_nodeid_command_interface_node = [&current_command_interface_ua_node](const auto &command_interface_ua_node)
+                {
+                    return (command_interface_ua_node.ua_ns == current_command_interface_ua_node.ua_ns) && (command_interface_ua_node.ua_identifier == current_command_interface_ua_node.ua_identifier);
+                };
+                auto it = std::find_if(command_interfaces_nodes.begin(), command_interfaces_nodes.end(), same_nodeid_command_interface_node);
+
+                // OPC UA Array was already processed, only populate command_interface_name and fallback_name maps
+                if (it != command_interfaces_nodes.end())
+                {
+                    it->command_interface_names.emplace(std::make_pair(index, name));
+                    it->fallback_state_interface_names.emplace(std::make_pair(index, fallback_name));
+                }
+                else
+                {
+                    // Create a whole interfaceUANode element and add it to the command_interfaces_nodes vector
+                    current_command_interface_ua_node.command_interface_names.emplace(std::make_pair(index, name));
+                    current_command_interface_ua_node.fallback_state_interface_names.emplace(std::make_pair(index, fallback_name));
+                    command_interfaces_nodes.push_back(current_command_interface_ua_node);
+                }
+            }
+        };
+
         // Go through all types of command interfaces defined in the URDF : joint, gpio
-        // auto init_command_interface_ua_nodes =
-        //     [&](const auto &type_command_interfaces_)
-        // {
-        //     for (const auto &[name, descr] : type_command_interfaces_)
-        //     {
-        //         CommandInterfaceUANode command_interface_ua_node;
-        //         command_interface_ua_node.command_interface_name = name;
-
-        //         // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and uint32_t
-        //         std::string ua_ns_str = descr.interface_info.parameters.at("ua_ns");
-        //         [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(), command_interface_ua_node.ua_ns);
-
-        //         std::string ua_id_str = descr.interface_info.parameters.at("ua_identifier");
-        //         [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(), command_interface_ua_node.ua_identifier);
-
-        //         command_interface_ua_node.ua_type = strToUAType(descr.interface_info.parameters.at("ua_type"));
-
-        //         // Look for the fallback_state_interface with the same NodeId
-        //         command_interface_ua_node.fallback_state_interface_name = "";
-        //         auto same_nodeid_state_interface_node = [&command_interface_ua_node](const auto &state_interface_ua_node)
-        //         {
-        //             return (state_interface_ua_node.ua_ns == command_interface_ua_node.ua_ns) && (state_interface_ua_node.ua_identifier == command_interface_ua_node.ua_identifier);
-        //         };
-        //         auto it = find_if(state_interfaces_nodes.begin(), state_interfaces_nodes.end(),
-        //                           same_nodeid_state_interface_node);
-
-        //         // Found a fallback state interface:
-        //         if (it != state_interfaces_nodes.end())
-        //         {
-        //             command_interface_ua_node.fallback_state_interface_name = it->state_interface_names;
-        //             RCLCPP_INFO(getLogger(), "\tThe following command interface: %s has a fallback state interface: %s.", command_interface_ua_node.command_interface_name.c_str(), command_interface_ua_node.fallback_state_interface_name.c_str());
-        //         }
-
-        //         command_interfaces_nodes.push_back(command_interface_ua_node);
-
-        //         // std::cout << "command_interface_ua_node : " << command_interface_ua_node.command_interface_name << std::endl;
-        //         // std::cout << "command_interface_ua_node.ua_ns : " << command_interface_ua_node.ua_ns << std::endl;
-        //         // std::cout << "command_interface_ua_node.ua_identifier : " << command_interface_ua_node.ua_identifier << std::endl;
-        //     }
-        // };
-
-        // init_command_interface_ua_nodes(joint_command_interfaces_);
-        // init_command_interface_ua_nodes(gpio_command_interfaces_);
-    }
-
-    // Helper function that returns the ROS2 interface_value depending on the OPC UA type
-    double OPCUAHardwareInterface::get_interface_value(UAType ua_type, opcua::Variant &ua_variant)
-    {
-        double interface_value;
-
-        switch (ua_type)
-        {
-        case UAType::UA_Boolean:
-        {
-            bool val = ua_variant.to<bool>();
-            interface_value = static_cast<double>(val);
-            break;
-        }
-
-        case UAType::UA_Byte:
-        {
-            uint8_t val = ua_variant.to<uint8_t>();
-            interface_value = static_cast<double>(val);
-
-            break;
-        }
-
-        case UAType::UA_Int16:
-        {
-            int16_t val = ua_variant.to<int16_t>();
-            interface_value = static_cast<double>(val);
-
-            break;
-        }
-
-        case UAType::UA_UInt16:
-        {
-            uint16_t val = ua_variant.to<uint16_t>();
-            interface_value = static_cast<double>(val);
-
-            break;
-        }
-
-        case UAType::UA_Int32:
-        {
-            int32_t val = ua_variant.to<int32_t>();
-            interface_value = static_cast<double>(val);
-
-            break;
-        }
-
-        case UAType::UA_UInt32:
-        {
-            uint32_t val = ua_variant.to<uint32_t>();
-            interface_value = static_cast<double>(val);
-
-            break;
-        }
-
-        case UAType::UA_Int64:
-        {
-            int64_t val = ua_variant.to<int64_t>();
-            interface_value = static_cast<double>(val);
-
-            break;
-        }
-
-        case UAType::UA_UInt64:
-        {
-            uint64_t val = ua_variant.to<uint64_t>();
-            interface_value = static_cast<double>(val);
-
-            break;
-        }
-
-        case UAType::UA_Float:
-        {
-            float val = ua_variant.to<float>();
-            interface_value = static_cast<double>(val);
-
-            break;
-        }
-
-        case UAType::UA_Double:
-        {
-            interface_value = ua_variant.to<double>();
-            break;
-        }
-
-        case UAType::UNKNOWN:
-        default:
-            interface_value = std::numeric_limits<double>::quiet_NaN();
-            break;
-        }
-        return interface_value;
+        init_command_interface_ua_nodes(joint_command_interfaces_);
+        init_command_interface_ua_nodes(gpio_command_interfaces_);
     }
 
     hardware_interface::return_type OPCUAHardwareInterface::read(
@@ -512,109 +454,47 @@ namespace opcua_hardware_interface
 
         for (const auto &command_interface_ua_node : command_interfaces_nodes)
         {
-            opcua::NodeId command_interface_node_id(1, 1);
+            opcua::NodeId command_interface_node_id(command_interface_ua_node.ua_ns, command_interface_ua_node.ua_identifier);
             opcua::Node current_command_interface_node{client, command_interface_node_id};
             opcua::Variant ua_variant; // will be used to write the value to the OPC UA server
 
-            // store the current val and reset the ros-side command value
-            double val = get_command(command_interface_ua_node.command_interface_name);
-            set_command(command_interface_ua_node.command_interface_name, std::numeric_limits<double>::quiet_NaN());
-
-            if (std::isnan(val))
+            // if the command interface is scalar
+            if (command_interface_ua_node.num_elements == 1)
             {
-                // if the original value was NaN and there exist a state interface of the same name, write corresponding state interface
-                if (!command_interface_ua_node.fallback_state_interface_name.empty())
-                {
-                    val = get_state(command_interface_ua_node.fallback_state_interface_name);
-                }
+                std::string command_interface_name = command_interface_ua_node.command_interface_names.at(0);
+                std::string fallback_name = command_interface_ua_node.fallback_state_interface_names.at(0);
 
-                // if we STILL don't have a fallback value on, don't update the write buffer.
-                // the last valid command is written
+                // store the current val and reset the ros-side command value
+                double val = get_command(command_interface_name);
+                set_command(command_interface_name, std::numeric_limits<double>::quiet_NaN());
+
                 if (std::isnan(val))
                 {
-                    continue;
+                    // if the original value was NaN and there exist a state interface of the same name, write corresponding state interface
+                    if (!fallback_name.empty())
+                    {
+                        val = get_state(fallback_name);
+                    }
+
+                    // if we STILL don't have a fallback value on, don't update the write buffer.
+                    // the last valid command is written
+                    if (std::isnan(val))
+                    {
+                        continue;
+                    }
                 }
+                ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
             }
-
-            switch (command_interface_ua_node.ua_type)
+            else // if the command interface is an array
             {
-            case UAType::UA_Boolean:
-            {
-                bool ua_value = static_cast<bool>(val);
-                ua_variant = ua_value;
-                break;
-            }
+                std::vector<double> command_vector = get_command_vector(command_interface_ua_node);
 
-            case UAType::UA_Byte:
-            {
-                uint8_t ua_value = static_cast<uint8_t>(val);
-                ua_variant = ua_value;
-                break;
-            }
+                if (command_vector.empty())
+                {
+                    continue; // Do no send a Write Request
+                }
 
-            case UAType::UA_Int16:
-            {
-                int16_t ua_value = static_cast<int16_t>(val);
-                ua_variant = ua_value;
-                break;
-            }
-
-            case UAType::UA_UInt16:
-            {
-                uint16_t ua_value = static_cast<uint16_t>(val);
-                ua_variant = ua_value;
-                break;
-            }
-
-            case UAType::UA_Int32:
-            {
-                int32_t ua_value = static_cast<int32_t>(val);
-                ua_variant = ua_value;
-                break;
-            }
-
-            case UAType::UA_UInt32:
-            {
-                uint32_t ua_value = static_cast<uint32_t>(val);
-                ua_variant = ua_value;
-                break;
-            }
-
-            case UAType::UA_Int64:
-            {
-                int64_t ua_value = static_cast<int64_t>(val);
-                ua_variant = ua_value;
-                break;
-            }
-
-            case UAType::UA_UInt64:
-            {
-                uint64_t ua_value = static_cast<uint64_t>(val);
-                ua_variant = ua_value;
-                break;
-            }
-
-            case UAType::UA_Float:
-            {
-                float ua_value = static_cast<float>(val);
-                ua_variant = ua_value;
-                break;
-            }
-
-            case UAType::UA_Double:
-            {
-                double ua_value = val;
-                ua_variant = ua_value;
-                break;
-            }
-
-            case UAType::UNKNOWN:
-            default:
-                RCLCPP_ERROR_THROTTLE(getLogger(), *logging_throttle_clock_, 1000,
-                                      "Unhandled or UNKNOWN UA type for the interface '%s' during write.",
-                                      command_interface_ua_node.command_interface_name.c_str());
-                return hardware_interface::return_type::ERROR;
-                break;
+                ua_variant = get_array_command_variant(command_interface_ua_node.ua_type, command_vector);
             }
 
             // Write the value to the OPC UA server
@@ -659,6 +539,402 @@ namespace opcua_hardware_interface
 
         RCLCPP_ERROR(getLogger(), "Unknown UA type string: '%s'", type_str.c_str());
         return UAType::UNKNOWN;
+    }
+
+    // Helper function that returns the ROS2 interface_value depending on the OPC UA type
+    double OPCUAHardwareInterface::get_interface_value(UAType ua_type, opcua::Variant &ua_variant)
+    {
+        double interface_value;
+
+        switch (ua_type)
+        {
+        case UAType::UA_Boolean:
+        {
+            bool val = ua_variant.to<bool>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
+
+        case UAType::UA_Byte:
+        {
+            uint8_t val = ua_variant.to<uint8_t>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
+
+        case UAType::UA_Int16:
+        {
+            int16_t val = ua_variant.to<int16_t>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
+
+        case UAType::UA_UInt16:
+        {
+            uint16_t val = ua_variant.to<uint16_t>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
+
+        case UAType::UA_Int32:
+        {
+            int32_t val = ua_variant.to<int32_t>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
+
+        case UAType::UA_UInt32:
+        {
+            uint32_t val = ua_variant.to<uint32_t>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
+
+        case UAType::UA_Int64:
+        {
+            int64_t val = ua_variant.to<int64_t>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
+
+        case UAType::UA_UInt64:
+        {
+            uint64_t val = ua_variant.to<uint64_t>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
+
+        case UAType::UA_Float:
+        {
+            float val = ua_variant.to<float>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
+
+        case UAType::UA_Double:
+        {
+            interface_value = ua_variant.to<double>();
+            break;
+        }
+
+        case UAType::UNKNOWN:
+        default:
+            interface_value = std::numeric_limits<double>::quiet_NaN();
+            break;
+        }
+        return interface_value;
+    }
+
+    // If an interface refers to an array, get all the commands and store them inside a vector
+    std::vector<double> OPCUAHardwareInterface::get_command_vector(const CommandInterfaceUANode &command_ua_node)
+    {
+        std::vector<double> command_vector;
+        double current_command;
+        std::string current_command_interface_name;
+        std::string current_fallback_interface_name;
+
+        for (size_t i = 0; i < command_ua_node.num_elements; ++i)
+        {
+            current_command_interface_name = command_ua_node.command_interface_names.at(i);
+            current_fallback_interface_name = command_ua_node.fallback_state_interface_names.at(i);
+
+            current_command = get_command(current_command_interface_name);
+
+            set_command(current_command_interface_name,
+                        std::numeric_limits<double>::quiet_NaN());
+
+            if (std::isnan(current_command))
+            {
+                if (!current_fallback_interface_name.empty())
+                {
+                    current_command = get_state(current_fallback_interface_name);
+                }
+
+                if (std::isnan(current_command))
+                {
+                    continue;
+                }
+            }
+            command_vector.push_back(current_command);
+        }
+        return command_vector;
+    }
+
+    // The UAVariant contains the data that will be sent to the server as an write request
+    opcua::Variant OPCUAHardwareInterface::get_scalar_command_variant(UAType ua_type, double val)
+    {
+        opcua::Variant ua_variant;
+        switch (ua_type)
+        {
+        case UAType::UA_Boolean:
+        {
+            bool ua_value = static_cast<bool>(val);
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UA_Byte:
+        {
+            uint8_t ua_value = static_cast<uint8_t>(val);
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UA_Int16:
+        {
+            int16_t ua_value = static_cast<int16_t>(val);
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UA_UInt16:
+        {
+            uint16_t ua_value = static_cast<uint16_t>(val);
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UA_Int32:
+        {
+            int32_t ua_value = static_cast<int32_t>(val);
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UA_UInt32:
+        {
+            uint32_t ua_value = static_cast<uint32_t>(val);
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UA_Int64:
+        {
+            int64_t ua_value = static_cast<int64_t>(val);
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UA_UInt64:
+        {
+            uint64_t ua_value = static_cast<uint64_t>(val);
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UA_Float:
+        {
+            float ua_value = static_cast<float>(val);
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UA_Double:
+        {
+            double ua_value = val;
+            ua_variant = ua_value;
+            break;
+        }
+
+        case UAType::UNKNOWN:
+        default:
+            RCLCPP_ERROR_THROTTLE(getLogger(), *logging_throttle_clock_, 1000,
+                                  "Unhandled or UNKNOWN UA type for the interface during write.");
+
+            // TODO: Add a flag to return the error inside write
+            //  return hardware_interface::return_type::ERROR;
+            break;
+        }
+
+        return ua_variant;
+    }
+
+    opcua::Variant OPCUAHardwareInterface::get_array_command_variant(UAType ua_type, std::vector<double> &command_array)
+    {
+        opcua::Variant command_variant;
+
+        switch (ua_type)
+        {
+        case UAType::UA_Boolean:
+        {
+            std::vector<bool> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<bool>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UA_Byte:
+        {
+            std::vector<uint8_t> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<uint8_t>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UA_Int16:
+        {
+            std::vector<int16_t> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<int16_t>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UA_UInt16:
+        {
+            std::vector<uint16_t> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<uint16_t>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UA_Int32:
+        {
+            std::vector<int32_t> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<int32_t>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UA_UInt32:
+        {
+            std::vector<uint32_t> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<uint32_t>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UA_Int64:
+        {
+            std::vector<int64_t> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<int64_t>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UA_UInt64:
+        {
+            std::vector<uint64_t> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<uint64_t>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UA_Float:
+        {
+            std::vector<float> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<float>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UA_Double:
+        {
+            std::vector<double> ua_vals;
+            ua_vals.reserve(command_array.size());
+
+            for (double command_value : command_array)
+            {
+                if (!std::isnan(command_value))
+                {
+                    ua_vals.push_back(static_cast<double>(command_value));
+                }
+            }
+
+            command_variant = ua_vals;
+            break;
+        }
+
+        case UAType::UNKNOWN:
+        default:
+            RCLCPP_ERROR_THROTTLE(getLogger(), *logging_throttle_clock_, 1000,
+                                  "Unhandled or UNKNOWN UA type for the interface during write.");
+            // TODO: Add a flag to return an error inside the write function
+            //  return hardware_interface::return_type::ERROR;
+            break;
+        }
+
+        return command_variant;
     }
 
 } // namespace opcua_hardware_interface
