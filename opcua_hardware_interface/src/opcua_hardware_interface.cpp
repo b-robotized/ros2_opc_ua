@@ -34,6 +34,8 @@ namespace opcua_hardware_interface
         populate_state_interfaces_node_ids();
         populate_command_interfaces_node_ids();
 
+        populate_read_items();
+
         return CallbackReturn::SUCCESS;
     }
 
@@ -274,17 +276,81 @@ namespace opcua_hardware_interface
         init_command_interface_ua_nodes(gpio_command_interfaces_);
     }
 
+    void OPCUAHardwareInterface::populate_read_items()
+    {
+        read_items.clear();
+        read_items.reserve(state_interfaces_nodes.size());
+
+        for (const auto &state_node : state_interfaces_nodes)
+        {
+            opcua::ReadValueId read_value;
+            opcua::NodeId node_id(state_node.ua_ns, state_node.ua_identifier);
+
+            read_value->nodeId = node_id;
+            read_value->attributeId = UA_ATTRIBUTEID_VALUE; // (c.f wrapper.md line 94)
+            read_items.push_back(read_value);
+        }
+    }
+
     hardware_interface::return_type OPCUAHardwareInterface::read(
         const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
     {
 
         bool any_item_read_failed = false;
 
-        for (const auto &state_interface_ua_node : state_interfaces_nodes)
+        // Perform ONE Read Request with all the desired NodeIds
+        opcua::ReadRequest request(
+            opcua::RequestHeader{},          // default header
+            0.0,                             // maxAge
+            opcua::TimestampsToReturn::Both, // or Neither
+            read_items                       // Span<const ReadValueId>
+        );
+
+        // Response will contain all the OPC UA variables with the same NodeIds
+        opcua::ReadResponse response;
+
+        try
         {
-            opcua::NodeId state_interface_node_id(state_interface_ua_node.ua_ns, state_interface_ua_node.ua_identifier);
-            opcua::Node current_state_interface_node{client, state_interface_node_id};
-            opcua::Variant ua_variant = current_state_interface_node.readValue();
+            response = opcua::services::read(client, request); // (c.f attribute.hpp line 45)
+        }
+        catch (const std::exception &e)
+        {
+            RCLCPP_ERROR(getLogger(), "OPC UA read failed: %s", e.what());
+            any_item_read_failed = true;
+        }
+
+        const auto &results = response.results();
+
+        // There is missing information
+        if (results.size() != state_interfaces_nodes.size())
+        {
+            RCLCPP_ERROR(getLogger(),
+                         "Read result size mismatch: expected %zu, got %zu",
+                         state_interfaces_nodes.size(),
+                         results.size());
+            any_item_read_failed = true;
+        }
+
+        // Turn the results into an opcua::Variant
+        for (size_t k = 0; k < results.size(); ++k)
+        {
+            const auto &state_interface_ua_node = state_interfaces_nodes[k];
+            const auto &read_result = results[k]; // DataType class (c.f types.hpp line 1671)
+
+            // Check if there was an issue while reading that specific UA value
+            if (read_result.hasStatus() && read_result.status() != UA_STATUSCODE_GOOD)
+            {
+                RCLCPP_ERROR_THROTTLE(
+                    getLogger(), *logging_throttle_clock_, 1000,
+                    "Bad read status for node (%u, %u)",
+                    state_interface_ua_node.ua_ns,
+                    state_interface_ua_node.ua_identifier);
+
+                any_item_read_failed = true;
+                continue;
+            }
+
+            const opcua::Variant &ua_variant = read_result.value();
 
             std::string interface_name;
             double interface_value;
@@ -542,7 +608,7 @@ namespace opcua_hardware_interface
     }
 
     // Helper function that returns the ROS2 interface_value depending on the OPC UA type
-    double OPCUAHardwareInterface::get_interface_value(UAType ua_type, opcua::Variant &ua_variant)
+    double OPCUAHardwareInterface::get_interface_value(UAType ua_type, const opcua::Variant &ua_variant)
     {
         double interface_value;
 

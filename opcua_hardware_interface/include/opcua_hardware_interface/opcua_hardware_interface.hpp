@@ -89,7 +89,10 @@ namespace opcua_hardware_interface
         void populate_state_interfaces_node_ids();
         void populate_command_interfaces_node_ids();
 
-        double get_interface_value(UAType ua_type, opcua::Variant &ua_variant);
+        void populate_read_items();
+
+        double
+        get_interface_value(UAType ua_type, const opcua::Variant &ua_variant);
 
         std::vector<double> get_command_vector(const CommandInterfaceUANode &command_ua_node);
         opcua::Variant get_scalar_command_variant(UAType ua_type, double val);
@@ -97,6 +100,8 @@ namespace opcua_hardware_interface
 
         std::vector<StateInterfaceUANode> state_interfaces_nodes;     // Contains the node IDs cooresponding to the state interfaces.
         std::vector<CommandInterfaceUANode> command_interfaces_nodes; // Contains the node IDs cooresponding to the command interfaces.
+
+        std::vector<opcua::ReadValueId> read_items; // Contains the NodeIds corresponding to our state interfaces
     };
 
 } // namespace opcua_hardware_interface
