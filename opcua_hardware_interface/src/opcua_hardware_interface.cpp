@@ -4,6 +4,7 @@
 #include <algorithm> // std::transform
 #include <regex>
 #include <charconv> //std::from_chars
+#include <cmath>    //  std::isnan
 
 #include "opcua_hardware_interface/opcua_hardware_interface.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -111,33 +112,79 @@ namespace opcua_hardware_interface
     {
         RCLCPP_INFO(getLogger(), "\tEstablishing correspondances between State interfaces and UA Nodes... ");
 
-        // Go through all types of state interfaces defined in the URDF : joint, sensor, gpio
         auto init_state_interface_ua_nodes =
             [&](const auto &type_state_interfaces_)
         {
             for (const auto &[name, descr] : type_state_interfaces_)
             {
-                StateInterfaceUANode state_interface_ua_node;
 
-                state_interface_ua_node.state_interface_name = name;
+                std::string ua_ns_str;
+                std::string ua_id_str;
+                UAType ua_type;
+                size_t num_elements = 1;
+                size_t index = 0; // By default the OPC UA element is considered scalar
+
+                // Check if all necessary parameters exist
+                try
+                {
+                    ua_ns_str = descr.interface_info.parameters.at("ua_ns");
+                    ua_id_str = descr.interface_info.parameters.at("ua_identifier");
+                    ua_type = strToUAType(descr.interface_info.parameters.at("ua_type"));
+
+                    // Check if state_interface refers to an OPC UA Array element
+                    if (descr.interface_info.parameters.count("n_elements"))
+                    {
+                        num_elements = std::stoul(descr.interface_info.parameters.at("n_elements"));
+                    }
+                    if (descr.interface_info.parameters.count("index"))
+                    {
+                        index = std::stoul(descr.interface_info.parameters.at("index"));
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    RCLCPP_ERROR(getLogger(), "Error parsing PLC parameters for state interface '%s': %s. Check URDF.",
+                                 name.c_str(), e.what());
+                    continue;
+                }
+
+                StateInterfaceUANode current_state_interface_ua_node;
 
                 // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and uint32_t
-                std::string ua_ns_str = descr.interface_info.parameters.at("ua_ns");
-                [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(), state_interface_ua_node.ua_ns);
+                [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(), current_state_interface_ua_node.ua_ns);
+                [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(), current_state_interface_ua_node.ua_identifier);
+                current_state_interface_ua_node.ua_type = ua_type;
+                current_state_interface_ua_node.num_elements = num_elements;
 
-                std::string ua_id_str = descr.interface_info.parameters.at("ua_identifier");
-                [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(), state_interface_ua_node.ua_identifier);
+                // Find if a state_interface with the same NodeId was already processed
+                auto same_nodeid_state_interface_node = [&current_state_interface_ua_node](const auto &state_interface_ua_node)
+                {
+                    return (state_interface_ua_node.ua_ns == current_state_interface_ua_node.ua_ns) && (state_interface_ua_node.ua_identifier == current_state_interface_ua_node.ua_identifier);
+                };
+                auto it = std::find_if(state_interfaces_nodes.begin(), state_interfaces_nodes.end(), same_nodeid_state_interface_node);
 
-                state_interface_ua_node.ua_type = strToUAType(descr.interface_info.parameters.at("ua_type"));
+                // OPC UA Array was already processed
+                if (it != state_interfaces_nodes.end())
+                {
+                    // TODO: We suppose for now that the array indexed are ordered in the URDF
+                    // TODO: Implement a more robust way of processing the URDF info (map<index, interface_name>?)
 
-                state_interfaces_nodes.push_back(state_interface_ua_node);
-
-                // std::cout << "state_interface_ua_node : " << state_interface_ua_node.state_interface_name << std::endl;
-                // std::cout << "state_interface_ua_node.ua_ns : " << state_interface_ua_node.ua_ns << std::endl;
-                // std::cout << "state_interface_ua_node.ua_identifier : " << state_interface_ua_node.ua_identifier << std::endl;
+                    RCLCPP_INFO(getLogger(),
+                                "State interface %s has already been processed", name.c_str());
+                    it->state_interface_names.emplace(std::make_pair(index, name));
+                }
+                else
+                {
+                    RCLCPP_INFO(getLogger(),
+                                "State interface %s has NOT been processed", name.c_str());
+                    // Add the name to the current interface_ua_node instead
+                    current_state_interface_ua_node.state_interface_names.emplace(std::make_pair(index, name));
+                    state_interfaces_nodes.push_back(current_state_interface_ua_node);
+                }
             }
         };
 
+        //  Go through all types of state interfaces defined in the URDF : joint, sensor, gpio
         init_state_interface_ua_nodes(joint_state_interfaces_);
         init_state_interface_ua_nodes(gpio_state_interfaces_);
         init_state_interface_ua_nodes(sensor_state_interfaces_);
@@ -148,49 +195,141 @@ namespace opcua_hardware_interface
         RCLCPP_INFO(getLogger(), "\tEstablishing correspondances between Command interfaces and UA Nodes... ");
 
         // Go through all types of command interfaces defined in the URDF : joint, gpio
-        auto init_command_interface_ua_nodes =
-            [&](const auto &type_command_interfaces_)
+        // auto init_command_interface_ua_nodes =
+        //     [&](const auto &type_command_interfaces_)
+        // {
+        //     for (const auto &[name, descr] : type_command_interfaces_)
+        //     {
+        //         CommandInterfaceUANode command_interface_ua_node;
+        //         command_interface_ua_node.command_interface_name = name;
+
+        //         // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and uint32_t
+        //         std::string ua_ns_str = descr.interface_info.parameters.at("ua_ns");
+        //         [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(), command_interface_ua_node.ua_ns);
+
+        //         std::string ua_id_str = descr.interface_info.parameters.at("ua_identifier");
+        //         [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(), command_interface_ua_node.ua_identifier);
+
+        //         command_interface_ua_node.ua_type = strToUAType(descr.interface_info.parameters.at("ua_type"));
+
+        //         // Look for the fallback_state_interface with the same NodeId
+        //         command_interface_ua_node.fallback_state_interface_name = "";
+        //         auto same_nodeid_state_interface_node = [&command_interface_ua_node](const auto &state_interface_ua_node)
+        //         {
+        //             return (state_interface_ua_node.ua_ns == command_interface_ua_node.ua_ns) && (state_interface_ua_node.ua_identifier == command_interface_ua_node.ua_identifier);
+        //         };
+        //         auto it = find_if(state_interfaces_nodes.begin(), state_interfaces_nodes.end(),
+        //                           same_nodeid_state_interface_node);
+
+        //         // Found a fallback state interface:
+        //         if (it != state_interfaces_nodes.end())
+        //         {
+        //             command_interface_ua_node.fallback_state_interface_name = it->state_interface_names;
+        //             RCLCPP_INFO(getLogger(), "\tThe following command interface: %s has a fallback state interface: %s.", command_interface_ua_node.command_interface_name.c_str(), command_interface_ua_node.fallback_state_interface_name.c_str());
+        //         }
+
+        //         command_interfaces_nodes.push_back(command_interface_ua_node);
+
+        //         // std::cout << "command_interface_ua_node : " << command_interface_ua_node.command_interface_name << std::endl;
+        //         // std::cout << "command_interface_ua_node.ua_ns : " << command_interface_ua_node.ua_ns << std::endl;
+        //         // std::cout << "command_interface_ua_node.ua_identifier : " << command_interface_ua_node.ua_identifier << std::endl;
+        //     }
+        // };
+
+        // init_command_interface_ua_nodes(joint_command_interfaces_);
+        // init_command_interface_ua_nodes(gpio_command_interfaces_);
+    }
+
+    // Helper function that returns the ROS2 interface_value depending on the OPC UA type
+    double OPCUAHardwareInterface::get_interface_value(UAType ua_type, opcua::Variant &ua_variant)
+    {
+        double interface_value;
+
+        switch (ua_type)
         {
-            for (const auto &[name, descr] : type_command_interfaces_)
-            {
-                CommandInterfaceUANode command_interface_ua_node;
-                command_interface_ua_node.command_interface_name = name;
+        case UAType::UA_Boolean:
+        {
+            bool val = ua_variant.to<bool>();
+            interface_value = static_cast<double>(val);
+            break;
+        }
 
-                // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and uint32_t
-                std::string ua_ns_str = descr.interface_info.parameters.at("ua_ns");
-                [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(), command_interface_ua_node.ua_ns);
+        case UAType::UA_Byte:
+        {
+            uint8_t val = ua_variant.to<uint8_t>();
+            interface_value = static_cast<double>(val);
 
-                std::string ua_id_str = descr.interface_info.parameters.at("ua_identifier");
-                [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(), command_interface_ua_node.ua_identifier);
+            break;
+        }
 
-                command_interface_ua_node.ua_type = strToUAType(descr.interface_info.parameters.at("ua_type"));
+        case UAType::UA_Int16:
+        {
+            int16_t val = ua_variant.to<int16_t>();
+            interface_value = static_cast<double>(val);
 
-                // Look for the fallback_state_interface with the same NodeId
-                command_interface_ua_node.fallback_state_interface_name = "";
-                auto same_nodeid_state_interface_node = [&command_interface_ua_node](const auto &state_interface_ua_node)
-                {
-                    return (state_interface_ua_node.ua_ns == command_interface_ua_node.ua_ns) && (state_interface_ua_node.ua_identifier == command_interface_ua_node.ua_identifier);
-                };
-                auto it = find_if(state_interfaces_nodes.begin(), state_interfaces_nodes.end(),
-                                  same_nodeid_state_interface_node);
+            break;
+        }
 
-                // Found a fallback state interface:
-                if (it != state_interfaces_nodes.end())
-                {
-                    command_interface_ua_node.fallback_state_interface_name = it->state_interface_name;
-                    RCLCPP_INFO(getLogger(), "\tThe following command interface: %s has a fallback state interface: %s.", command_interface_ua_node.command_interface_name.c_str(), command_interface_ua_node.fallback_state_interface_name.c_str());
-                }
+        case UAType::UA_UInt16:
+        {
+            uint16_t val = ua_variant.to<uint16_t>();
+            interface_value = static_cast<double>(val);
 
-                command_interfaces_nodes.push_back(command_interface_ua_node);
+            break;
+        }
 
-                // std::cout << "command_interface_ua_node : " << command_interface_ua_node.command_interface_name << std::endl;
-                // std::cout << "command_interface_ua_node.ua_ns : " << command_interface_ua_node.ua_ns << std::endl;
-                // std::cout << "command_interface_ua_node.ua_identifier : " << command_interface_ua_node.ua_identifier << std::endl;
-            }
-        };
+        case UAType::UA_Int32:
+        {
+            int32_t val = ua_variant.to<int32_t>();
+            interface_value = static_cast<double>(val);
 
-        init_command_interface_ua_nodes(joint_command_interfaces_);
-        init_command_interface_ua_nodes(gpio_command_interfaces_);
+            break;
+        }
+
+        case UAType::UA_UInt32:
+        {
+            uint32_t val = ua_variant.to<uint32_t>();
+            interface_value = static_cast<double>(val);
+
+            break;
+        }
+
+        case UAType::UA_Int64:
+        {
+            int64_t val = ua_variant.to<int64_t>();
+            interface_value = static_cast<double>(val);
+
+            break;
+        }
+
+        case UAType::UA_UInt64:
+        {
+            uint64_t val = ua_variant.to<uint64_t>();
+            interface_value = static_cast<double>(val);
+
+            break;
+        }
+
+        case UAType::UA_Float:
+        {
+            float val = ua_variant.to<float>();
+            interface_value = static_cast<double>(val);
+
+            break;
+        }
+
+        case UAType::UA_Double:
+        {
+            interface_value = ua_variant.to<double>();
+            break;
+        }
+
+        case UAType::UNKNOWN:
+        default:
+            interface_value = std::numeric_limits<double>::quiet_NaN();
+            break;
+        }
+        return interface_value;
     }
 
     hardware_interface::return_type OPCUAHardwareInterface::read(
@@ -203,88 +342,157 @@ namespace opcua_hardware_interface
         {
             opcua::NodeId state_interface_node_id(state_interface_ua_node.ua_ns, state_interface_ua_node.ua_identifier);
             opcua::Node current_state_interface_node{client, state_interface_node_id};
-            opcua::Variant value_variant = current_state_interface_node.readValue();
+            opcua::Variant ua_variant = current_state_interface_node.readValue();
 
-            switch (state_interface_ua_node.ua_type)
+            std::string interface_name;
+            double interface_value;
+            std::vector<double> values;
+
+            // OPC UA variable is scalar
+            if (ua_variant.isScalar())
             {
-            case UAType::UA_Boolean:
-            {
-                bool val = value_variant.to<bool>();
-                set_state(state_interface_ua_node.state_interface_name, static_cast<double>(val));
-                break;
+                interface_value = get_interface_value(state_interface_ua_node.ua_type, ua_variant);
+                interface_name = state_interface_ua_node.state_interface_names.at(0);
+
+                if (std::isnan(interface_value))
+                {
+                    RCLCPP_ERROR_THROTTLE(getLogger(), *logging_throttle_clock_, 1000,
+                                          "Unhandled or UNKNOWN UA type (%d) for the interface '%s' during read.",
+                                          static_cast<int>(state_interface_ua_node.ua_type), interface_name.c_str());
+                    any_item_read_failed = true;
+                }
+                set_state(interface_name, interface_value);
             }
 
-            case UAType::UA_Byte:
+            // OPC UA variable is array
+            if (ua_variant.isArray())
             {
-                uint8_t val = value_variant.to<uint8_t>();
-                set_state(state_interface_ua_node.state_interface_name, static_cast<double>(val));
-                break;
-            }
+                // const auto &ua_var = ua_variant.get();
+                auto ua_size = ua_variant.arrayLength();
+                const UA_DataType *type = ua_variant.type();
 
-            case UAType::UA_Int16:
-            {
-                int16_t val = value_variant.to<int16_t>();
-                set_state(state_interface_ua_node.state_interface_name, static_cast<double>(val));
-                break;
-            }
+                // Check if the UA number of elements == ROS2 number of elements
+                if (ua_size != state_interface_ua_node.num_elements)
+                {
+                    RCLCPP_FATAL(getLogger(),
+                                 "\tState interface declared for nodeId (%u, %u) number of elements does not match the UA Array size on the server side.",
+                                 state_interface_ua_node.ua_ns,
+                                 state_interface_ua_node.ua_identifier);
+                    any_item_read_failed = true;
+                }
 
-            case UAType::UA_UInt16:
-            {
-                uint16_t val = value_variant.to<uint16_t>();
-                set_state(state_interface_ua_node.state_interface_name, static_cast<double>(val));
-                break;
-            }
+                // TODO : Find a more concise way to write to vectors
 
-            case UAType::UA_Int32:
-            {
-                int32_t val = value_variant.to<int32_t>();
-                set_state(state_interface_ua_node.state_interface_name, static_cast<double>(val));
-                break;
-            }
+                if (type == &UA_TYPES[UA_TYPES_BOOLEAN])
+                {
+                    auto values_vector = ua_variant.to<std::vector<bool>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
 
-            case UAType::UA_UInt32:
-            {
-                uint32_t val = value_variant.to<uint32_t>();
-                set_state(state_interface_ua_node.state_interface_name, static_cast<double>(val));
-                break;
-            }
+                if (type == &UA_TYPES[UA_TYPES_BYTE])
+                {
+                    auto values_vector = ua_variant.to<std::vector<uint8_t>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
 
-            case UAType::UA_Int64:
-            {
-                int64_t val = value_variant.to<int64_t>();
-                set_state(state_interface_ua_node.state_interface_name, static_cast<double>(val));
-                break;
-            }
+                if (type == &UA_TYPES[UA_TYPES_INT16])
+                {
+                    auto values_vector = ua_variant.to<std::vector<int16_t>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
 
-            case UAType::UA_UInt64:
-            {
-                uint64_t val = value_variant.to<uint64_t>();
-                set_state(state_interface_ua_node.state_interface_name, static_cast<double>(val));
-                break;
-            }
+                if (type == &UA_TYPES[UA_TYPES_UINT16])
+                {
+                    auto values_vector = ua_variant.to<std::vector<uint16_t>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
 
-            case UAType::UA_Float:
-            {
-                float val = value_variant.to<float>();
-                set_state(state_interface_ua_node.state_interface_name, static_cast<double>(val));
-                break;
-            }
+                if (type == &UA_TYPES[UA_TYPES_INT32])
+                {
+                    auto values_vector = ua_variant.to<std::vector<int32_t>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
 
-            case UAType::UA_Double:
-            {
-                double val = value_variant.to<double>();
-                set_state(state_interface_ua_node.state_interface_name, val);
-                break;
-            }
+                if (type == &UA_TYPES[UA_TYPES_UINT32])
+                {
+                    auto values_vector = ua_variant.to<std::vector<uint32_t>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
 
-            case UAType::UNKNOWN:
-            default:
-                RCLCPP_ERROR_THROTTLE(getLogger(), *logging_throttle_clock_, 1000,
-                                      "Unhandled or UNKNOWN UA type (%d) for the interface '%s' during read.",
-                                      static_cast<int>(state_interface_ua_node.ua_type), state_interface_ua_node.state_interface_name.c_str());
-                set_state(state_interface_ua_node.state_interface_name, std::numeric_limits<double>::quiet_NaN());
-                any_item_read_failed = true;
-                break;
+                if (type == &UA_TYPES[UA_TYPES_INT64])
+                {
+                    auto values_vector = ua_variant.to<std::vector<int64_t>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
+
+                if (type == &UA_TYPES[UA_TYPES_UINT64])
+                {
+                    auto values_vector = ua_variant.to<std::vector<uint64_t>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
+
+                if (type == &UA_TYPES[UA_TYPES_FLOAT])
+                {
+                    auto values_vector = ua_variant.to<std::vector<float>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
+
+                if (type == &UA_TYPES[UA_TYPES_DOUBLE])
+                {
+                    auto values_vector = ua_variant.to<std::vector<double>>();
+                    for (size_t i = 0; i < values_vector.size(); i++)
+                    {
+                        interface_name = state_interface_ua_node.state_interface_names.at(i);
+                        interface_value = static_cast<double>(values_vector[i]);
+                        set_state(interface_name, interface_value);
+                    }
+                }
+                //! Other types (e.g Unknown) are not treated
             }
         }
 

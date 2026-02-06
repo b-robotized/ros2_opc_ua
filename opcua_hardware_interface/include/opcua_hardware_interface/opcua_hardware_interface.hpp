@@ -37,7 +37,9 @@ namespace opcua_hardware_interface
         opcua::NamespaceIndex ua_ns; // uint16_t (c.f common.hpp)
         uint32_t ua_identifier;
         UAType ua_type;
-        std::string state_interface_name;
+        size_t num_elements;
+        std::map<size_t, std::string> state_interface_names; // If the OPC UA variable is scalar, contains only one pair element
+        // size_t array_index; //  index : if interface is part of an array inside UA Server, else SIZE_MAX if UA variable is scalar
     };
 
     struct CommandInterfaceUANode
@@ -47,6 +49,7 @@ namespace opcua_hardware_interface
         UAType ua_type;
         std::string command_interface_name;
         std::string fallback_state_interface_name;
+        size_t array_index; //  index : if interface is part of an array inside UA Server, else SIZE_MAX if UA variable is scalar
     };
 
     class OPCUAHardwareInterface : public hardware_interface::SystemInterface
@@ -86,6 +89,8 @@ namespace opcua_hardware_interface
 
         void populate_state_interfaces_node_ids();
         void populate_command_interfaces_node_ids();
+
+        double get_interface_value(UAType ua_type, opcua::Variant &ua_variant);
 
         std::vector<StateInterfaceUANode> state_interfaces_nodes;     // Contains the node IDs cooresponding to the state interfaces.
         std::vector<CommandInterfaceUANode> command_interfaces_nodes; // Contains the node IDs cooresponding to the command interfaces.

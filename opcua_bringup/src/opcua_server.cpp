@@ -1,4 +1,5 @@
 #include <iostream>
+#include <vector>
 
 #include <open62541pp/node.hpp>
 #include <open62541pp/server.hpp>
@@ -77,19 +78,35 @@ int main()
     opcua::Node parentNode{server, opcua::ObjectId::ObjectsFolder};
 
     opcua::Node myIntegerNode = parentNode.addVariable(
-        {1, 1},                     //! nodeId (ns=1 ; s=TheAnswer)
+        {1, 1},                     //! nodeId (ns=1 ; s=1)
         "The Answer",               //! browse name
         opcua::VariableAttributes{} //! attributes (c.f node.hpp line 156)
             .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
             .setDisplayName({"en-US", "The Answer"})
             .setDescription({"en-US", "Answer to the Ultimate Question of Life"})
-            .setDataType<int>());
+            .setDataType<int>()
+            .setValueRank(ValueRank::Scalar)
+            .setValue(opcua::Variant{42}));
+
+    const std::vector<float> currentPos{0.15, -1.25};
+    opcua::Node currentPosNode = parentNode.addVariable(
+        {1, 10},
+        "Current Position Array",
+        opcua::VariableAttributes{}
+            .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+            .setDisplayName({"en-US", "Array of current position"})
+            .setDataType(DataTypeId::Float)
+            .setArrayDimensions({0})               //! single dimension but unknown in size
+            .setValueRank(ValueRank::OneDimension) //! (c.f common.hpp line 157)
+            .setValue(opcua::Variant{currentPos}));
 
     // Write a value (attribute) to the node
-    myIntegerNode.writeValue(opcua::Variant{42});
+    // currentPosNode.writeValue(opcua::Variant{0.15, -1.24});
 
     // Read the value (attribute) from the node
     std::cout << "The answer is: " << myIntegerNode.readValue().to<int>() << std::endl;
+    std::cout << "The cuurentPos is: [ " << currentPosNode.readValue().to<std::vector<float>>().at(0)
+              << " , " << currentPosNode.readValue().to<std::vector<float>>().at(1) << " ]." << std::endl;
 
     server.run();
 }
