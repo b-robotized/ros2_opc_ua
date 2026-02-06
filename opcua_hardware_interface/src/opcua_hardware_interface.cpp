@@ -518,10 +518,11 @@ namespace opcua_hardware_interface
             return hardware_interface::return_type::OK;
         }
 
+        // Reserve space for write request items
+        write_items.reserve(command_interfaces_nodes.size());
+
         for (const auto &command_interface_ua_node : command_interfaces_nodes)
         {
-            opcua::NodeId command_interface_node_id(command_interface_ua_node.ua_ns, command_interface_ua_node.ua_identifier);
-            opcua::Node current_command_interface_node{client, command_interface_node_id};
             opcua::Variant ua_variant; // will be used to write the value to the OPC UA server
 
             // if the command interface is scalar
@@ -563,9 +564,36 @@ namespace opcua_hardware_interface
                 ua_variant = get_array_command_variant(command_interface_ua_node.ua_type, command_vector);
             }
 
-            // Write the value to the OPC UA server
-            current_command_interface_node.writeValue(ua_variant);
+            // Send a request containing all the OPCUA node Ids we want to write
+            opcua::ua::WriteValue write_value; // (c.f types.hpp line 1429)
+            write_value.nodeId() = opcua::NodeId(command_interface_ua_node.ua_ns, command_interface_ua_node.ua_identifier);
+            write_value->attributeId = UA_ATTRIBUTEID_VALUE;
+            write_value.value() = opcua::DataValue(ua_variant);
+
+            write_items.push_back(std::move(write_value));
         }
+
+        if (!write_items.empty())
+        {
+            // Make a single global request to write items
+            opcua::ua::WriteRequest request{opcua::RequestHeader(), write_items};
+            opcua::ua::WriteResponse response = opcua::services::write(client, request);
+
+            const auto &results = response.results();
+            for (size_t i = 0; i < results.size(); ++i)
+            {
+                // Issue detected during write
+                if (results[i] != UA_STATUSCODE_GOOD)
+                {
+                    RCLCPP_ERROR(getLogger(),
+                                 "OPC UA write failed for node %zu with status 0x%08X",
+                                 i,
+                                 static_cast<uint32_t>(results[i]));
+                    any_item_write_failed = true;
+                }
+            }
+        }
+
         return any_item_write_failed ? hardware_interface::return_type::ERROR : hardware_interface::return_type::OK;
     }
 

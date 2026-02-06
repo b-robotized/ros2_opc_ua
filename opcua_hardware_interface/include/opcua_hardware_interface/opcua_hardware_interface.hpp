@@ -102,6 +102,7 @@ namespace opcua_hardware_interface
         std::vector<CommandInterfaceUANode> command_interfaces_nodes; // Contains the node IDs cooresponding to the command interfaces.
 
         std::vector<opcua::ReadValueId> read_items; // Contains the NodeIds corresponding to our state interfaces
+        std::vector<opcua::ua::WriteValue> write_items;
     };
 
 } // namespace opcua_hardware_interface
