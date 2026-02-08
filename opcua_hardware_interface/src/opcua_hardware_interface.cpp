@@ -310,6 +310,13 @@ hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time 
 
     bool any_item_read_failed = false;
 
+    // Client lost connection to the UA server
+    if (!client.isConnected())
+    {
+        RCLCPP_ERROR(getLogger(), "Hardware interface lost connection to the server during read operation.");
+        any_item_read_failed = true;
+    }
+
     // Perform ONE Read Request with all the desired NodeIds
     opcua::ReadRequest request(opcua::RequestHeader{},          // default header
                                0.0,                             // maxAge
@@ -518,6 +525,14 @@ hardware_interface::return_type OPCUAHardwareInterface::write(const rclcpp::Time
 {
 
     bool any_item_write_failed = false;
+
+    // Client lost connection to the UA server
+    if (!client.isConnected())
+    {
+        RCLCPP_ERROR(getLogger(), "Hardware interface lost connection to the server during write operation.");
+        any_item_write_failed = true;
+    }
+
     // There are no command interfaces to write to
     if (command_interfaces_nodes.size() == 0)
     {
@@ -592,7 +607,7 @@ hardware_interface::return_type OPCUAHardwareInterface::write(const rclcpp::Time
             // Issue detected during write
             if (results[i] != UA_STATUSCODE_GOOD)
             {
-                RCLCPP_ERROR(getLogger(), "OPC UA write failed for node %zu with status 0x%08X", i,
+                RCLCPP_ERROR(getLogger(), "\tOPC UA write failed for node %zu with status 0x%08X", i,
                              static_cast<uint32_t>(results[i]));
                 any_item_write_failed = true;
             }
