@@ -71,7 +71,6 @@ class OPCUAHardwareInterface : public hardware_interface::SystemInterface
 
   private:
     rclcpp::Logger getLogger() { return rclcpp::get_logger("OPCUAHardwareInterface"); }
-    std::shared_ptr<rclcpp::Clock> logging_throttle_clock_;
 
     // ========= OPC UA ==============================
     // OPC UA type helper

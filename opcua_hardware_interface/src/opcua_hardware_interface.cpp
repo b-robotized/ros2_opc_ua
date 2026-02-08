@@ -15,8 +15,6 @@ namespace opcua_hardware_interface
 hardware_interface::CallbackReturn
 OPCUAHardwareInterface::on_init(const hardware_interface::HardwareComponentParams & /*params*/)
 {
-    logging_throttle_clock_ = std::make_shared<rclcpp::Clock>(RCL_STEADY_TIME);
-
     return CallbackReturn::SUCCESS;
 }
 
@@ -351,7 +349,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time 
         // Check if there was an issue while reading that specific UA value
         if (read_result.hasStatus() && read_result.status() != UA_STATUSCODE_GOOD)
         {
-            RCLCPP_ERROR_THROTTLE(getLogger(), *logging_throttle_clock_, 1000, "Bad read status for node (%u, %u)",
+            RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 1000, "Bad read status for node (%u, %u)",
                                   state_interface_ua_node.ua_ns, state_interface_ua_node.ua_identifier);
 
             any_item_read_failed = true;
@@ -372,7 +370,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time 
 
             if (std::isnan(interface_value))
             {
-                RCLCPP_ERROR_THROTTLE(getLogger(), *logging_throttle_clock_, 1000,
+                RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 1000,
                                       "Unhandled or UNKNOWN UA type (%d) for the interface '%s' during read.",
                                       static_cast<int>(state_interface_ua_node.ua_type), interface_name.c_str());
                 any_item_read_failed = true;
@@ -838,7 +836,7 @@ opcua::Variant OPCUAHardwareInterface::get_scalar_command_variant(UAType ua_type
 
     case UAType::UNKNOWN:
     default:
-        RCLCPP_ERROR_THROTTLE(getLogger(), *logging_throttle_clock_, 1000,
+        RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 1000,
                               "Unhandled or UNKNOWN UA type for the interface during write.");
 
         // TODO: Add a flag to return the error inside write
@@ -1027,7 +1025,7 @@ opcua::Variant OPCUAHardwareInterface::get_array_command_variant(UAType ua_type,
 
     case UAType::UNKNOWN:
     default:
-        RCLCPP_ERROR_THROTTLE(getLogger(), *logging_throttle_clock_, 1000,
+        RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 1000,
                               "Unhandled or UNKNOWN UA type for the interface during write.");
         // TODO: Add a flag to return an error inside the write function
         //  return hardware_interface::return_type::ERROR;
