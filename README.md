@@ -41,7 +41,7 @@ It is also possible to give them Admin rights by using the aatribute `isAdmin`.
 
 Run the OPC UA server first: 
 ```
-ros2 run opcua_bringup opcua_server 
+ros2 run opcua_bringup example_opcua_server 
 ```
 
 Then launch the `control node`: 

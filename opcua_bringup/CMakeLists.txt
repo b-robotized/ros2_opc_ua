@@ -16,11 +16,11 @@ find_package(open62541pp_vendor REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-add_executable(opcua_server src/opcua_server.cpp)
+add_executable(example_opcua_server src/example_opcua_server.cpp)
 
-target_link_libraries(opcua_server open62541pp::open62541pp)
+target_link_libraries(example_opcua_server open62541pp::open62541pp)
 install(TARGETS
-  opcua_server
+  example_opcua_server
   DESTINATION lib/${PROJECT_NAME}
 )
 
