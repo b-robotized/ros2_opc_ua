@@ -1,9 +1,11 @@
+#include <cmath>
 #include <iostream>
 #include <vector>
 
+#include "open62541pp/callback.hpp"
 #include <open62541pp/node.hpp>
-#include <open62541pp/server.hpp>
 #include <open62541pp/plugin/accesscontrol_default.hpp>
+#include <open62541pp/server.hpp>
 
 using namespace opcua;
 
@@ -14,14 +16,12 @@ using namespace opcua;
 // Session attributes are available since open62541 v1.3, so this example requires at least v1.3.
 class AccessControlCustom : public AccessControlDefault
 {
-public:
+  public:
     using AccessControlDefault::AccessControlDefault; // inherit constructors
 
-    StatusCode activateSession(
-        Session &session,
-        const EndpointDescription &endpointDescription,
-        const ByteString &secureChannelRemoteCertificate,
-        const ExtensionObject &userIdentityToken) override
+    StatusCode activateSession(Session &session, const EndpointDescription &endpointDescription,
+                               const ByteString &secureChannelRemoteCertificate,
+                               const ExtensionObject &userIdentityToken) override
     {
         // Grant admin rights if user is logged in as "admin"
         // Store attribute "isAdmin" as session attribute to use it in access callbacks
@@ -30,18 +30,16 @@ public:
         std::cout << "User has admin rights: " << isAdmin << std::endl;
         session.setSessionAttribute({0, "isAdmin"}, Variant{isAdmin});
 
-        return AccessControlDefault::activateSession(
-            session, endpointDescription, secureChannelRemoteCertificate, userIdentityToken);
+        return AccessControlDefault::activateSession(session, endpointDescription, secureChannelRemoteCertificate,
+                                                     userIdentityToken);
     }
 
-    Bitmask<AccessLevel> getUserAccessLevel(Session &session, const NodeId &nodeId) override
+    Bitmask<AccessLevel> getUserAccessLevel(Session &session, const NodeId & /*nodeId */) override
     {
         const bool isAdmin = session.getSessionAttribute({0, "isAdmin"}).scalar<bool>();
-        std::cout << "Get user access level of node id " << opcua::toString(nodeId) << std::endl;
-        std::cout << "Admin rights granted: " << isAdmin << std::endl;
-        return isAdmin
-                   ? AccessLevel::CurrentRead | AccessLevel::CurrentWrite
-                   : AccessLevel::CurrentRead;
+        // std::cout << "Get user access level of node id " << opcua::toString(nodeId) << std::endl;
+        // std::cout << "Admin rights granted: " << isAdmin << std::endl;
+        return isAdmin ? AccessLevel::CurrentRead | AccessLevel::CurrentWrite : AccessLevel::CurrentRead;
     }
 };
 
@@ -60,11 +58,10 @@ int main()
 
     // Exchanging usernames/passwords without encryption as plain text is dangerous.
     // We are doing this just for demonstration, don't use it in production!
-    AccessControlCustom accessControl{
-        true, // allow anonymous
-        {
-            Login{String{"admin"}, String{"ua_password"}},
-        }};
+    AccessControlCustom accessControl{true, // allow anonymous
+                                      {
+                                          Login{String{"admin"}, String{"ua_password"}},
+                                      }};
 
     config.setAccessControl(accessControl);
 
@@ -77,51 +74,74 @@ int main()
     // Add a variable node to the Objects node
     opcua::Node parentNode{server, opcua::ObjectId::ObjectsFolder};
 
-    opcua::Node myIntegerNode = parentNode.addVariable(
-        {1, 1},                     //! nodeId (ns=1 ; s=1)
-        "The Answer",               //! browse name
-        opcua::VariableAttributes{} //! attributes (c.f node.hpp line 156)
-            .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
-            .setDisplayName({"en-US", "The Answer"})
-            .setDescription({"en-US", "Answer to the Ultimate Question of Life"})
-            .setDataType<int>()
-            .setValueRank(ValueRank::Scalar)
-            .setValue(opcua::Variant{42}));
+    opcua::Node myIntegerNode =
+        parentNode.addVariable({1, 1},                     //! nodeId (ns=1 ; s=1)
+                               "The Answer",               //! browse name
+                               opcua::VariableAttributes{} //! attributes (c.f node.hpp line 156)
+                                   .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+                                   .setDisplayName({"en-US", "The Answer"})
+                                   .setDescription({"en-US", "Answer to the Ultimate Question of Life"})
+                                   .setDataType<int>()
+                                   .setValueRank(ValueRank::Scalar)
+                                   .setValue(opcua::Variant{42}));
 
-    const std::vector<float> currentPos{0.15, -1.25};
-    opcua::Node currentPosNode = parentNode.addVariable(
-        {1, 10},
-        "Current Position Array",
-        opcua::VariableAttributes{}
-            .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
-            .setDisplayName({"en-US", "Array of current position"})
-            .setDataType(DataTypeId::Float)
-            .setArrayDimensions({0})               //! single dimension but unknown in size
-            .setValueRank(ValueRank::OneDimension) //! (c.f common.hpp line 157)
-            .setValue(opcua::Variant{currentPos}));
+    std::vector<float> currentPos{0.15, -1.25};
+    opcua::Node currentPosNode =
+        parentNode.addVariable({1, 10}, "Current Position Array",
+                               opcua::VariableAttributes{}
+                                   .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+                                   .setDisplayName({"en-US", "Array of current position"})
+                                   .setDataType(DataTypeId::Float)
+                                   .setArrayDimensions({0})               //! single dimension but unknown in size
+                                   .setValueRank(ValueRank::OneDimension) //! (c.f common.hpp line 157)
+                                   .setValue(opcua::Variant{currentPos}));
 
     std::vector<UA_Boolean> commandPos = {UA_FALSE, UA_TRUE};
     // std::bool is not supported, UA_Boolean is uint8_t
-    opcua::Node commandPosNode = parentNode.addVariable(
-        {1, 11},
-        "Command Position Array",
-        opcua::VariableAttributes{}
-            .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
-            .setDisplayName({"en-US", "Array of boolean command position"})
-            .setDataType(DataTypeId::Boolean)
-            .setArrayDimensions({0})               //! single dimension but unknown in size
-            .setValueRank(ValueRank::OneDimension) //! (c.f common.hpp line 157)
-            .setValue(opcua::Variant{commandPos}));
+    opcua::Node commandPosNode =
+        parentNode.addVariable({1, 11}, "Command Position Array",
+                               opcua::VariableAttributes{}
+                                   .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+                                   .setDisplayName({"en-US", "Array of boolean command position"})
+                                   .setDataType(DataTypeId::Boolean)
+                                   .setArrayDimensions({0})               //! single dimension but unknown in size
+                                   .setValueRank(ValueRank::OneDimension) //! (c.f common.hpp line 157)
+                                   .setValue(opcua::Variant{commandPos}));
 
-    // Write a value (attribute) to the node
-    // currentPosNode.writeValue(opcua::Variant{0.15, -1.24});
+    // Add a callback fucnction to simulate change over time
+    size_t counter = 0;
+    const double interval = 500; // milliseconds
+    float angle;
+    const opcua::CallbackId id1 = opcua::addRepeatedCallback(
+        server,
+        [&]
+        {
+            if (counter % 10 == 0)
+            {
+                commandPos[0] = !commandPos[0];
+                commandPos[1] = !commandPos[1];
+            }
+            angle = static_cast<float>(counter) * 0.01f;
+            currentPos[0] = std::sin(angle);
+            currentPos[1] = std::cos(angle);
 
-    // Read the value (attribute) from the node
+            ++counter;
+            std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]" << std::endl;
+            std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]" << std::endl;
+
+            commandPosNode.writeValue(opcua::Variant(commandPos));
+            currentPosNode.writeValue(opcua::Variant(currentPos));
+        },
+        interval);
+
+    // Read the initial value (attribute) from the node
     std::cout << "The answer is: " << myIntegerNode.readValue().to<int>() << std::endl;
-    std::cout << "The cuurentPos is: [ " << currentPosNode.readValue().to<std::vector<float>>().at(0)
-              << " , " << currentPosNode.readValue().to<std::vector<float>>().at(1) << " ]." << std::endl;
-    std::cout << "The commandPos is: [ " << commandPosNode.readValue().to<std::vector<bool>>().at(0)
-              << " , " << commandPosNode.readValue().to<std::vector<bool>>().at(1) << " ]." << std::endl;
+    std::cout << "The curentPos is: [ " << currentPosNode.readValue().to<std::vector<float>>().at(0) << " , "
+              << currentPosNode.readValue().to<std::vector<float>>().at(1) << " ]." << std::endl;
+    std::cout << "The commandPos is: [ " << commandPosNode.readValue().to<std::vector<bool>>().at(0) << " , "
+              << commandPosNode.readValue().to<std::vector<bool>>().at(1) << " ]." << std::endl;
 
     server.run();
+
+    opcua::removeCallback(server, id1);
 }
