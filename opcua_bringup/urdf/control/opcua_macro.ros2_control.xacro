@@ -16,7 +16,7 @@
                 </xacro:if>
                 <xacro:unless value="${mock_hardware}">
                     <plugin>opcua_hardware_interface/OPCUAHardwareInterface</plugin>
-                    <param name="ip">192.168.1.109</param>
+                    <param name="ip">127.0.0.1</param>
                     <param name="port">4840</param>
                     <param name="user">admin</param>
                     <param name="password">ua_password</param>

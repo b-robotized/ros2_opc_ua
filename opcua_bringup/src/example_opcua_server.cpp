@@ -49,8 +49,20 @@ int main()
 
     // Use handle to access the open62541 methods
     UA_ServerConfig *ua_server_config = config.handle();
-    std::string ip_address = "192.168.1.109";
-    ua_server_config->customHostname = UA_STRING(ip_address.data()); //! UA_STRING only accepts non const char*
+    std::string url = "opc.tcp://127.0.0.1:4840";
+
+    // clear and free existing server URLs
+    if (ua_server_config->serverUrlsSize > 0) {
+        for (size_t i = 0; i < ua_server_config->serverUrlsSize; i++) {
+            UA_String_clear(&ua_server_config->serverUrls[i]);
+        }
+        UA_free(ua_server_config->serverUrls);
+    }
+    // allocate array
+    ua_server_config->serverUrls = (UA_String*)UA_malloc(sizeof(UA_String));
+    ua_server_config->serverUrlsSize = 1;
+    // allocate the string
+    ua_server_config->serverUrls[0] = UA_STRING_ALLOC(url.c_str());
 
     config.setApplicationName("open62541pp server example");
     config.setApplicationUri("urn:open62541pp.server.application");
