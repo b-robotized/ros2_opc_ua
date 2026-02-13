@@ -1,6 +1,21 @@
-#include <algorithm> // std::transform
-#include <charconv>  //std::from_chars
-#include <cmath>     //  std::isnan
+// Copyright (c) 2026, b»robotized group
+// All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include <algorithm>  // std::transform
+#include <charconv>   // std::from_chars
+#include <cmath>      //  std::isnan
 #include <cstdint>
 #include <limits>
 #include <regex>
@@ -22,7 +37,6 @@ OPCUAHardwareInterface::on_init(const hardware_interface::HardwareComponentParam
 hardware_interface::CallbackReturn
 OPCUAHardwareInterface::on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
 {
-
     if (!configure_ua_client())
     {
         RCLCPP_FATAL(getLogger(), "Failed to configure OPC UA client from URDF parameters.");
@@ -41,13 +55,11 @@ OPCUAHardwareInterface::on_configure(const rclcpp_lifecycle::State & /*previous_
 // Create an OPC UA client and connect it to the server
 bool OPCUAHardwareInterface::configure_ua_client()
 {
-
     RCLCPP_INFO(getLogger(), "Configuring OPC UA Client...");
     const auto &params = info_.hardware_parameters;
 
     try
     {
-
         std::string ip_address = params.at("ip");
         std::string port_number = params.at("port");
         std::string username = params.at("user");
@@ -147,18 +159,18 @@ OPCUAHardwareInterface::on_deactivate(const rclcpp_lifecycle::State & /*previous
 
 void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
 {
-    RCLCPP_INFO(getLogger(), "\tEstablishing correspondances between State interfaces and UA Nodes... ");
+    RCLCPP_INFO(getLogger(),
+                "\tEstablishing correspondences between State interfaces and UA Nodes... ");
 
     auto init_state_interface_ua_nodes = [&](const auto &type_state_interfaces_)
     {
         for (const auto &[name, descr] : type_state_interfaces_)
         {
-
             std::string ua_ns_str;
             std::string ua_id_str;
             UAType ua_type;
             size_t num_elements = 1;
-            size_t index = 0; // By default the OPC UA element is considered scalar
+            size_t index = 0;  // By default the OPC UA element is considered scalar
 
             // Check if all necessary parameters exist
             try
@@ -179,18 +191,23 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
             }
             catch (const std::exception &e)
             {
-                RCLCPP_ERROR(getLogger(), "Error parsing PLC parameters for state interface '%s': %s. Check URDF.",
-                             name.c_str(), e.what());
+                RCLCPP_ERROR(
+                    getLogger(),
+                    "Error parsing PLC parameters for state interface '%s': %s. Check URDF.",
+                    name.c_str(), e.what());
                 continue;
             }
 
             StateInterfaceUANode current_state_interface_ua_node;
 
-            // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and uint32_t
-            [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(),
-                                                                current_state_interface_ua_node.ua_ns);
-            [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(),
-                                                                current_state_interface_ua_node.ua_identifier);
+            // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and
+            // uint32_t
+            [[maybe_unused]] auto [ptr1, ec1] =
+                std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(),
+                                current_state_interface_ua_node.ua_ns);
+            [[maybe_unused]] auto [ptr2, ec2] =
+                std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(),
+                                current_state_interface_ua_node.ua_identifier);
             current_state_interface_ua_node.ua_type = ua_type;
             current_state_interface_ua_node.num_elements = num_elements;
 
@@ -199,7 +216,8 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
                 [&current_state_interface_ua_node](const auto &state_interface_ua_node)
             {
                 return (state_interface_ua_node.ua_ns == current_state_interface_ua_node.ua_ns) &&
-                       (state_interface_ua_node.ua_identifier == current_state_interface_ua_node.ua_identifier);
+                       (state_interface_ua_node.ua_identifier ==
+                        current_state_interface_ua_node.ua_identifier);
             };
             auto it = std::find_if(state_interfaces_nodes.begin(), state_interfaces_nodes.end(),
                                    same_nodeid_state_interface_node);
@@ -212,7 +230,8 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
             else
             {
                 // Add the name to the current interface_ua_node instead
-                current_state_interface_ua_node.state_interface_names.emplace(std::make_pair(index, name));
+                current_state_interface_ua_node.state_interface_names.emplace(
+                    std::make_pair(index, name));
                 state_interfaces_nodes.push_back(current_state_interface_ua_node);
             }
         }
@@ -226,7 +245,8 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
 
 void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
 {
-    RCLCPP_INFO(getLogger(), "\tEstablishing correspondances between Command interfaces and UA Nodes... ");
+    RCLCPP_INFO(getLogger(),
+                "\tEstablishing correspondences between Command interfaces and UA Nodes... ");
 
     auto init_command_interface_ua_nodes = [&](const auto &type_command_interfaces_)
     {
@@ -258,18 +278,21 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
             }
             catch (const std::exception &e)
             {
-                RCLCPP_ERROR(getLogger(), "Error parsing PLC parameters for command interface '%s': %s. Check URDF.",
-                             name.c_str(), e.what());
+                RCLCPP_ERROR(
+                    getLogger(),
+                    "Error parsing PLC parameters for command interface '%s': %s. Check URDF.",
+                    name.c_str(), e.what());
                 continue;
             }
 
             CommandInterfaceUANode current_command_interface_ua_node;
 
-            // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and uint32_t
-            [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(),
-                                                                current_command_interface_ua_node.ua_ns);
-            [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(),
-                                                                current_command_interface_ua_node.ua_identifier);
+            [[maybe_unused]] auto [ptr1, ec1] =
+                std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(),
+                                current_command_interface_ua_node.ua_ns);
+            [[maybe_unused]] auto [ptr2, ec2] =
+                std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(),
+                                current_command_interface_ua_node.ua_identifier);
             current_command_interface_ua_node.ua_type = ua_type;
             current_command_interface_ua_node.num_elements = num_elements;
 
@@ -278,10 +301,11 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
                 [&current_command_interface_ua_node](const auto &state_interface_ua_node)
             {
                 return (state_interface_ua_node.ua_ns == current_command_interface_ua_node.ua_ns) &&
-                       (state_interface_ua_node.ua_identifier == current_command_interface_ua_node.ua_identifier);
+                       (state_interface_ua_node.ua_identifier ==
+                        current_command_interface_ua_node.ua_identifier);
             };
-            auto it_fallback =
-                find_if(state_interfaces_nodes.begin(), state_interfaces_nodes.end(), same_nodeid_state_interface_node);
+            auto it_fallback = find_if(state_interfaces_nodes.begin(), state_interfaces_nodes.end(),
+                                       same_nodeid_state_interface_node);
 
             // Found a fallback state interface:
             if (it_fallback != state_interfaces_nodes.end())
@@ -289,21 +313,26 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
                 fallback_name = it_fallback->state_interface_names.at(index);
                 // current_command_interface_ua_node.fallback_state_interface_names.emplace(std::make_pair(index,
                 // fallback_name));
-                RCLCPP_INFO(getLogger(), "\tThe following command interface: %s has a fallback state interface: %s.",
-                            name.c_str(), fallback_name.c_str());
+                RCLCPP_INFO(
+                    getLogger(),
+                    "\tThe following command interface: %s has a fallback state interface: %s.",
+                    name.c_str(), fallback_name.c_str());
             }
 
             /* Find if a command_interface with the same NodeId was already processed */
             auto same_nodeid_command_interface_node =
                 [&current_command_interface_ua_node](const auto &command_interface_ua_node)
             {
-                return (command_interface_ua_node.ua_ns == current_command_interface_ua_node.ua_ns) &&
-                       (command_interface_ua_node.ua_identifier == current_command_interface_ua_node.ua_identifier);
+                return (command_interface_ua_node.ua_ns ==
+                        current_command_interface_ua_node.ua_ns) &&
+                       (command_interface_ua_node.ua_identifier ==
+                        current_command_interface_ua_node.ua_identifier);
             };
             auto it = std::find_if(command_interfaces_nodes.begin(), command_interfaces_nodes.end(),
                                    same_nodeid_command_interface_node);
 
-            // OPC UA Array was already processed, only populate command_interface_name and fallback_name maps
+            // OPC UA Array was already processed, only populate command_interface_name and
+            // fallback_name maps
             if (it != command_interfaces_nodes.end())
             {
                 it->command_interface_names.emplace(std::make_pair(index, name));
@@ -311,8 +340,10 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
             }
             else
             {
-                // Create a whole interfaceUANode element and add it to the command_interfaces_nodes vector
-                current_command_interface_ua_node.command_interface_names.emplace(std::make_pair(index, name));
+                // Create a whole interfaceUANode element and add it to the command_interfaces_nodes
+                // vector
+                current_command_interface_ua_node.command_interface_names.emplace(
+                    std::make_pair(index, name));
                 current_command_interface_ua_node.fallback_state_interface_names.emplace(
                     std::make_pair(index, fallback_name));
                 command_interfaces_nodes.push_back(current_command_interface_ua_node);
@@ -336,7 +367,7 @@ void OPCUAHardwareInterface::populate_read_items()
         opcua::NodeId node_id(state_node.ua_ns, state_node.ua_identifier);
 
         read_value->nodeId = node_id;
-        read_value->attributeId = UA_ATTRIBUTEID_VALUE; // (c.f wrapper.md line 94)
+        read_value->attributeId = UA_ATTRIBUTEID_VALUE;  // (c.f wrapper.md line 94)
         read_items.push_back(read_value);
     }
 }
@@ -344,21 +375,21 @@ void OPCUAHardwareInterface::populate_read_items()
 hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time & /*time*/,
                                                              const rclcpp::Duration & /*period*/)
 {
-
     bool any_item_read_failed = false;
 
     // Client lost connection to the UA server
     if (!client.isConnected())
     {
-        RCLCPP_ERROR(getLogger(), "Hardware interface lost connection to the server during read operation.");
+        RCLCPP_ERROR(getLogger(),
+                     "Hardware interface lost connection to the server during read operation.");
         any_item_read_failed = true;
     }
 
     // Perform ONE Read Request with all the desired NodeIds
-    opcua::ReadRequest request(opcua::RequestHeader{},          // default header
-                               0.0,                             // maxAge
-                               opcua::TimestampsToReturn::Both, // or Neither
-                               read_items                       // Span<const ReadValueId>
+    opcua::ReadRequest request(opcua::RequestHeader{},           // default header
+                               0.0,                              // maxAge
+                               opcua::TimestampsToReturn::Both,  // or Neither
+                               read_items                        // Span<const ReadValueId>
     );
 
     // Response will contain all the OPC UA variables with the same NodeIds
@@ -366,7 +397,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time 
 
     try
     {
-        response = opcua::services::read(client, request); // (c.f attribute.hpp line 45)
+        response = opcua::services::read(client, request);  // (c.f attribute.hpp line 45)
     }
     catch (const std::exception &e)
     {
@@ -379,8 +410,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time 
     // There is missing information
     if (results.size() != state_interfaces_nodes.size())
     {
-        RCLCPP_ERROR(getLogger(), "Read result size mismatch: expected %zu, got %zu", state_interfaces_nodes.size(),
-                     results.size());
+        RCLCPP_ERROR(getLogger(), "Read result size mismatch: expected %zu, got %zu",
+                     state_interfaces_nodes.size(), results.size());
         any_item_read_failed = true;
     }
 
@@ -388,13 +419,14 @@ hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time 
     for (size_t k = 0; k < results.size(); ++k)
     {
         const auto &state_interface_ua_node = state_interfaces_nodes[k];
-        const auto &read_result = results[k]; // DataType class (c.f types.hpp line 1671)
+        const auto &read_result = results[k];  // DataType class (c.f types.hpp line 1671)
 
         // Check if there was an issue while reading that specific UA value
         if (read_result.hasStatus() && read_result.status() != UA_STATUSCODE_GOOD)
         {
-            RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 1000, "Bad read status for node (%u, %u)",
-                                  state_interface_ua_node.ua_ns, state_interface_ua_node.ua_identifier);
+            RCLCPP_ERROR_THROTTLE(
+                getLogger(), *get_clock(), 1000, "Bad read status for node (%u, %u)",
+                state_interface_ua_node.ua_ns, state_interface_ua_node.ua_identifier);
 
             any_item_read_failed = true;
             continue;
@@ -414,9 +446,10 @@ hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time 
 
             if (std::isnan(interface_value))
             {
-                RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 1000,
-                                      "Unhandled or UNKNOWN UA type (%d) for the interface '%s' during read.",
-                                      static_cast<int>(state_interface_ua_node.ua_type), interface_name.c_str());
+                RCLCPP_ERROR_THROTTLE(
+                    getLogger(), *get_clock(), 1000,
+                    "Unhandled or UNKNOWN UA type (%d) for the interface '%s' during read.",
+                    static_cast<int>(state_interface_ua_node.ua_type), interface_name.c_str());
                 any_item_read_failed = true;
             }
             set_state(interface_name, interface_value);
@@ -433,13 +466,14 @@ hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time 
             if (ua_size != state_interface_ua_node.num_elements)
             {
                 RCLCPP_FATAL(getLogger(),
-                             "\tState interface declared for nodeId (%u, %u) number of elements does not match the UA "
+                             "\tState interface declared for nodeId (%u, %u) number of elements "
+                             "does not match the UA "
                              "Array size on the server side.",
                              state_interface_ua_node.ua_ns, state_interface_ua_node.ua_identifier);
                 any_item_read_failed = true;
             }
 
-            // TODO : Find a more concise way to write to vectors
+            // TODO(habartakh) : Find a more concise way to write to vectors
 
             if (type == &UA_TYPES[UA_TYPES_BOOLEAN])
             {
@@ -554,19 +588,20 @@ hardware_interface::return_type OPCUAHardwareInterface::read(const rclcpp::Time 
         }
     }
 
-    return any_item_read_failed ? hardware_interface::return_type::ERROR : hardware_interface::return_type::OK;
+    return any_item_read_failed ? hardware_interface::return_type::ERROR
+                                : hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type OPCUAHardwareInterface::write(const rclcpp::Time & /*time*/,
                                                               const rclcpp::Duration & /*period*/)
 {
-
     bool any_item_write_failed = false;
 
     // Client lost connection to the UA server
     if (!client.isConnected())
     {
-        RCLCPP_ERROR(getLogger(), "Hardware interface lost connection to the server during write operation.");
+        RCLCPP_ERROR(getLogger(),
+                     "Hardware interface lost connection to the server during write operation.");
         any_item_write_failed = true;
     }
 
@@ -581,13 +616,15 @@ hardware_interface::return_type OPCUAHardwareInterface::write(const rclcpp::Time
 
     for (const auto &command_interface_ua_node : command_interfaces_nodes)
     {
-        opcua::Variant ua_variant; // will be used to write the value to the OPC UA server
+        opcua::Variant ua_variant;  // will be used to write the value to the OPC UA server
 
         // if the command interface is scalar
         if (command_interface_ua_node.num_elements == 1)
         {
-            std::string command_interface_name = command_interface_ua_node.command_interface_names.at(0);
-            std::string fallback_name = command_interface_ua_node.fallback_state_interface_names.at(0);
+            std::string command_interface_name =
+                command_interface_ua_node.command_interface_names.at(0);
+            std::string fallback_name =
+                command_interface_ua_node.fallback_state_interface_names.at(0);
 
             // store the current val and reset the ros-side command value
             double val = get_command(command_interface_name);
@@ -595,8 +632,8 @@ hardware_interface::return_type OPCUAHardwareInterface::write(const rclcpp::Time
 
             if (std::isnan(val))
             {
-                // if the original value was NaN and there exist a state interface of the same name, write corresponding
-                // state interface
+                // if the original value was NaN and there exist a state interface of the same name,
+                // write corresponding state interface
                 if (!fallback_name.empty())
                 {
                     val = get_state(fallback_name);
@@ -611,21 +648,23 @@ hardware_interface::return_type OPCUAHardwareInterface::write(const rclcpp::Time
             }
             ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
         }
-        else // if the command interface is an array
+        else  // if the command interface is an array
         {
             std::vector<double> command_vector = get_command_vector(command_interface_ua_node);
 
             if (command_vector.empty())
             {
-                continue; // Do no send a Write Request
+                continue;  // Do no send a Write Request
             }
 
-            ua_variant = get_array_command_variant(command_interface_ua_node.ua_type, command_vector);
+            ua_variant =
+                get_array_command_variant(command_interface_ua_node.ua_type, command_vector);
         }
 
         // Send a request containing all the OPCUA node Ids we want to write
-        opcua::ua::WriteValue write_value; // (c.f types.hpp line 1429)
-        write_value.nodeId() = opcua::NodeId(command_interface_ua_node.ua_ns, command_interface_ua_node.ua_identifier);
+        opcua::ua::WriteValue write_value;  // (c.f types.hpp line 1429)
+        write_value.nodeId() =
+            opcua::NodeId(command_interface_ua_node.ua_ns, command_interface_ua_node.ua_identifier);
         write_value->attributeId = UA_ATTRIBUTEID_VALUE;
         write_value.value() = opcua::DataValue(ua_variant);
 
@@ -644,14 +683,15 @@ hardware_interface::return_type OPCUAHardwareInterface::write(const rclcpp::Time
             // Issue detected during write
             if (results[i] != UA_STATUSCODE_GOOD)
             {
-                RCLCPP_ERROR(getLogger(), "\tOPC UA write failed for node %zu with status 0x%08X", i,
-                             static_cast<uint32_t>(results[i]));
+                RCLCPP_ERROR(getLogger(), "\tOPC UA write failed for node %zu with status 0x%08X",
+                             i, static_cast<uint32_t>(results[i]));
                 any_item_write_failed = true;
             }
         }
     }
 
-    return any_item_write_failed ? hardware_interface::return_type::ERROR : hardware_interface::return_type::OK;
+    return any_item_write_failed ? hardware_interface::return_type::ERROR
+                                 : hardware_interface::return_type::OK;
 }
 
 hardware_interface::CallbackReturn
@@ -666,7 +706,6 @@ OPCUAHardwareInterface::on_shutdown(const rclcpp_lifecycle::State & /*previous_s
 
 UAType OPCUAHardwareInterface::strToUAType(const std::string &type_str)
 {
-
     if (type_str == "UA_Boolean")
         return UAType::UA_Boolean;
     if (type_str == "UA_Byte")
@@ -777,7 +816,8 @@ double OPCUAHardwareInterface::get_interface_value(UAType ua_type, const opcua::
 }
 
 // If an interface refers to an array, get all the commands and store them inside a vector
-std::vector<double> OPCUAHardwareInterface::get_command_vector(const CommandInterfaceUANode &command_ua_node)
+std::vector<double>
+OPCUAHardwareInterface::get_command_vector(const CommandInterfaceUANode &command_ua_node)
 {
     std::vector<double> command_vector;
     double current_command;
@@ -891,15 +931,15 @@ opcua::Variant OPCUAHardwareInterface::get_scalar_command_variant(UAType ua_type
         RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 1000,
                               "Unhandled or UNKNOWN UA type for the interface during write.");
 
-        // TODO: Add a flag to return the error inside write
-        //  return hardware_interface::return_type::ERROR;
+        // TODO(habartakh): Add a flag to return the error inside write
         break;
     }
 
     return ua_variant;
 }
 
-opcua::Variant OPCUAHardwareInterface::get_array_command_variant(UAType ua_type, std::vector<double> &command_array)
+opcua::Variant OPCUAHardwareInterface::get_array_command_variant(UAType ua_type,
+                                                                 std::vector<double> &command_array)
 {
     opcua::Variant command_variant;
 
@@ -1079,16 +1119,16 @@ opcua::Variant OPCUAHardwareInterface::get_array_command_variant(UAType ua_type,
     default:
         RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 1000,
                               "Unhandled or UNKNOWN UA type for the interface during write.");
-        // TODO: Add a flag to return an error inside the write function
-        //  return hardware_interface::return_type::ERROR;
+        // TODO(habartakh): Add a flag to return an error inside the write function
         break;
     }
 
     return command_variant;
 }
 
-} // namespace opcua_hardware_interface
+}  // namespace opcua_hardware_interface
 
 #include "pluginlib/class_list_macros.hpp"
 
-PLUGINLIB_EXPORT_CLASS(opcua_hardware_interface::OPCUAHardwareInterface, hardware_interface::SystemInterface)
+PLUGINLIB_EXPORT_CLASS(opcua_hardware_interface::OPCUAHardwareInterface,
+                       hardware_interface::SystemInterface)
