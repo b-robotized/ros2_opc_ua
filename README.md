@@ -75,6 +75,30 @@ ros2 run opcua_bringup example_opcua_server --ros-args \
     -p security.private_key_path:=$(ros2 pkg prefix opcua_bringup)/share/opcua_bringup/config/server_key.der
 ```
 
+### Certificates
+
+The server requires X.509 certificates for secure communication (`Sign` or `SignAndEncrypt`).
+A set of self-signed certificates (valid for 100 years) is provided in the `config/` directory and is installed to `share/opcua_bringup/config/`.
+
+#### Generating new certificates
+
+You can regenerate these certificates using OpenSSL:
+
+```bash
+# 1. Generate PEM certificate and private key
+openssl req -x509 -newkey rsa:2048 \
+  -keyout server_key.pem \
+  -out server_cert.pem \
+  -days 365 -nodes \
+  -subj "/CN=ros2_opc_ua example server/O=ROS 2/C=DE"
+
+# 2. Convert Certificate to DER format
+openssl x509 -outform der -in server_cert.pem -out server_cert.der
+
+# 3. Convert Private Key to DER format
+openssl rsa -outform der -in server_key.pem -out server_key.der
+```
+
 ### Running the ROS 2 Control Node
 
 Once the server is running, launch the `control node`:
