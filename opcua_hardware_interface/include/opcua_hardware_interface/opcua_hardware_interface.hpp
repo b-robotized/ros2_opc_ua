@@ -1,9 +1,10 @@
-#ifndef opcua_hardware_interface__OPCUA_SYSTEM_HPP_
-#define opcua_hardware_interface__OPCUA_SYSTEM_HPP_
+#ifndef OPCUA_HARDWARE_INTERFACE__OPCUA_SYSTEM_HPP_
+#define OPCUA_HARDWARE_INTERFACE__OPCUA_SYSTEM_HPP_
 
 #include <limits>
 #include <string>
 #include <vector>
+#include <map>
 
 #include "hardware_interface/handle.hpp"
 #include "hardware_interface/hardware_info.hpp"
@@ -102,4 +103,4 @@ class OPCUAHardwareInterface : public hardware_interface::SystemInterface
 
 } // namespace opcua_hardware_interface
 
-#endif // opcua_hardware_interface__OPCUA_SYSTEM_HPP_
+#endif // OPCUA_HARDWARE_INTERFACE__OPCUA_SYSTEM_HPP_
