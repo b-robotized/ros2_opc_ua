@@ -128,7 +128,7 @@ int main(int argc, char ** argv)
 
   // Security parameters
   std::string security_policy =
-    node->declare_parameter("security.policy", "None");  // "None", "Sign", "SignAndEncrypt"
+    node->declare_parameter("security.policy", "Sign");  // "None", "Sign", "SignAndEncrypt"
   std::string cert_path = node->declare_parameter("security.certificate_path", "");
   std::string key_path = node->declare_parameter("security.private_key_path", "");
   bool auto_generate_certs = node->declare_parameter("security.auto_generate_certificates", true);
@@ -322,6 +322,18 @@ int main(int argc, char ** argv)
             << std::endl;
 
   server.run();
+
+  RCLCPP_INFO(node->get_logger(), "Server running. Press Ctrl+C to stop.");
+
+  // Run the server loop manually to integrate with ROS 2 spin
+  while (rclcpp::ok())
+  {
+    server.runIterate();
+    rclcpp::spin_some(node);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  RCLCPP_INFO(node->get_logger(), "Stopping server...");
 
   opcua::removeCallback(server, id1);
   rclcpp::shutdown();
