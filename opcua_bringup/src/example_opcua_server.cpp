@@ -324,8 +324,9 @@ int main(int argc, char ** argv)
   // as manual configuration of policies via low-level API is version dependent.
   // The ServerConfig constructor with certificates enables standard security policies.
 
-  // Manually update the security levels of the endpoints to allow clients to select the best one
-  // Security levels: None=0, Sign (older)=10, Sign (newer)=20, SignAndEncrypt (older)=110, SignAndEncrypt (newer)=120
+  // First, update the security levels of the endpoints
+  // Security levels: None=0, Sign (older)=10, Sign (newer)=20, SignAndEncrypt (older)=110,
+  // SignAndEncrypt (newer)=120
   for (size_t i = 0; i < ua_server_config->endpointsSize; ++i)
   {
     UA_EndpointDescription * endpoint = &ua_server_config->endpoints[i];
@@ -419,6 +420,21 @@ int main(int argc, char ** argv)
         }
       }
     }
+  }
+
+  // Sort endpoints by security level (lowest to highest)
+  if (ua_server_config->endpointsSize > 1)
+  {
+    std::qsort(
+      ua_server_config->endpoints, ua_server_config->endpointsSize, sizeof(UA_EndpointDescription),
+      [](const void * a, const void * b) -> int
+      {
+        const auto * epA = static_cast<const UA_EndpointDescription *>(a);
+        const auto * epB = static_cast<const UA_EndpointDescription *>(b);
+
+        // Sort by security level (ascending: least secure first)
+        return static_cast<int>(epA->securityLevel) - static_cast<int>(epB->securityLevel);
+      });
   }
 
   AccessControlCustom accessControl{
