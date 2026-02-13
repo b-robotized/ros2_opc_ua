@@ -253,6 +253,26 @@ int main(int argc, char ** argv)
   // as manual configuration of policies via low-level API is version dependent.
   // The ServerConfig constructor with certificates enables standard security policies.
 
+  // Manually update the security levels of the endpoints to allow clients to select the best one
+  // open62541 default logic often sets them based on policy URI length or similar,
+  // but we want to enforce standard recommendation: SignAndEncrypt > Sign > None.
+  for (size_t i = 0; i < ua_server_config->endpointsSize; ++i)
+  {
+    UA_EndpointDescription * endpoint = &ua_server_config->endpoints[i];
+    if (endpoint->securityMode == UA_MESSAGESECURITYMODE_SIGNANDENCRYPT)
+    {
+      endpoint->securityLevel = 115;
+    }
+    else if (endpoint->securityMode == UA_MESSAGESECURITYMODE_SIGN)
+    {
+      endpoint->securityLevel = 65;
+    }
+    else
+    {
+      endpoint->securityLevel = 0;
+    }
+  }
+
   AccessControlCustom accessControl{
     true,  // allow anonymous (always allowed)
     {
