@@ -43,6 +43,10 @@ Run the OPC UA server first:
 ```
 ros2 run opcua_bringup example_opcua_server
 ```
+if you want to enalble anonymous connect set the parameter:
+```
+ros2 run opcua_bringup example_opcua_server --ros-args -p allow_anonymous:=true
+```
 
 Then launch the `control node`:
 ```
