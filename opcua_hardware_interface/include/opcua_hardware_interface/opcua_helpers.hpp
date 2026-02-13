@@ -100,6 +100,65 @@ namespace opcua_hardware_interface
             }
         }
 
+        void print_client_info(const opcua::Client & client, const rclcpp::Logger & logger)
+        {
+            std::stringstream ss;
+            const auto& config = client.config();
+
+            auto to_sv = [](const UA_String& s) {
+                return (s.length > 0) ? std::string_view((char*)s.data, s.length) : std::string_view();
+            };
+            
+            auto to_text = [](const UA_LocalizedText& t) {
+                return (t.text.length > 0) ? std::string_view((char*)t.text.data, t.text.length) : std::string_view();
+            };
+            
+            ss << "\nClient Configuration:\n"
+               << "\tApplication Name:       " << to_text(config->clientDescription.applicationName) << "\n"
+               << "\tApplication URI:        " << to_sv(config->clientDescription.applicationUri) << "\n"
+               << "\tEndpoint:\n"
+               << "\t  - URL:                " << to_sv(config->endpointUrl) << "\n"
+               << "\t  - Security Mode:      " << toString(static_cast<opcua::MessageSecurityMode>(config->securityMode)) << "\n"
+               << "\t  - Security Policy:    " << to_sv(config->securityPolicyUri) << "\n"
+               << "\t  - Session Timeout:    " << config->requestedSessionTimeout << "ms\n";
+
+            // User Identity Token
+            const UA_ExtensionObject *token = &config->userIdentityToken;
+            ss << "\tUser Identity Token:\n";
+            
+            if (token->content.decoded.type == &UA_TYPES[UA_TYPES_ANONYMOUSIDENTITYTOKEN]) {
+                 ss << "\t  - Type: Anonymous\n";
+                 auto* anon = static_cast<UA_AnonymousIdentityToken*>(token->content.decoded.data);
+                 if (anon) {
+                     ss << "\t  - PolicyId: " << to_sv(anon->policyId) << "\n";
+                 }
+            } else if (token->content.decoded.type == &UA_TYPES[UA_TYPES_USERNAMEIDENTITYTOKEN]) {
+                 ss << "\t  - Type: UserName\n";
+                 auto* user = static_cast<UA_UserNameIdentityToken*>(token->content.decoded.data);
+                 if (user) {
+                     ss << "\t  - PolicyId: " << to_sv(user->policyId) << "\n";
+                     ss << "\t  - Username: " << to_sv(user->userName) << "\n";
+                     ss << "\t  - Password: " << to_sv(user->password) << "\n";
+                 }
+            } else if (token->content.decoded.type == &UA_TYPES[UA_TYPES_X509IDENTITYTOKEN]) {
+                 ss << "\t  - Type: X509 Certificate\n";
+                 auto* cert = static_cast<UA_X509IdentityToken*>(token->content.decoded.data);
+                 if (cert) {
+                     ss << "\t  - PolicyId: " << to_sv(cert->policyId) << "\n";
+                 }
+            } else if (token->content.decoded.type == &UA_TYPES[UA_TYPES_ISSUEDIDENTITYTOKEN]) {
+                 ss << "\t  - Type: Issued Token\n";
+                 auto* issued = static_cast<UA_IssuedIdentityToken*>(token->content.decoded.data);
+                 if (issued) {
+                     ss << "\t  - PolicyId: " << to_sv(issued->policyId) << "\n";
+                 }
+            } else {
+                 ss << "\t  - Type: Other/Unknown\n";
+            }
+
+            RCLCPP_INFO_STREAM(logger, ss.str());
+        }
+
     }  // namespace opcua_helpers
 
 }  // namespace opcua_hardware_interface

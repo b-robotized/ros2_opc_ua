@@ -70,11 +70,39 @@ bool OPCUAHardwareInterface::configure_ua_client()
         const auto servers = client.findServers(endpoint_url);
         opcua_helpers::print_servers_info(servers, getLogger());
 
+        // Set Application URI and Name
+        std::string app_uri = "urn:ros2_opc_ua.client.hw_itf:" + info_.name;
+        std::string app_name = "ros2_opc_ua client - ros2_control Hardware Interface - " + info_.name;
+
+        UA_String_clear(&client.config()->clientDescription.applicationUri);
+        client.config()->clientDescription.applicationUri = UA_STRING_ALLOC(app_uri.c_str());
+
+        UA_LocalizedText_clear(&client.config()->clientDescription.applicationName);
+        client.config()->clientDescription.applicationName = UA_LOCALIZEDTEXT_ALLOC("en", app_name.c_str());
+
+        // Set Security Mode
+        client.config()->securityMode = UA_MESSAGESECURITYMODE_NONE;
+
         if (!username.empty())
         {
-            client.config()->userTokenPolicy.tokenType = static_cast<UA_UserTokenType>(opcua::UserTokenType::Username);
-            client.config().setUserIdentityToken(opcua::UserNameIdentityToken{username, password});
+            // Create UserNameIdentityToken manually to set PolicyId
+            UA_UserNameIdentityToken* identityToken = UA_UserNameIdentityToken_new();
+            if (identityToken) {
+                identityToken->userName = UA_STRING_ALLOC(username.c_str());
+                identityToken->password = UA_STRING_ALLOC(password.c_str());
+                identityToken->policyId = UA_STRING_ALLOC("open62541-username-policy-none#None");
+
+                UA_ExtensionObject_clear(&client.config()->userIdentityToken);
+                UA_ExtensionObject_setValue(&client.config()->userIdentityToken, identityToken,
+                                            &UA_TYPES[UA_TYPES_USERNAMEIDENTITYTOKEN]);
+            } else {
+                 RCLCPP_ERROR(getLogger(), "Failed to allocate UserNameIdentityToken");
+            }
         }
+
+        // Print Client Configuration
+        opcua_helpers::print_client_info(client, getLogger());
+
         // Connect to the server using the credentials from the URDF
         RCLCPP_INFO(getLogger(), "\tConnection to the Endpoint URL: %s...", endpoint_url.c_str());
         client.connect(endpoint_url);
