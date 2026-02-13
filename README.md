@@ -82,22 +82,48 @@ A set of self-signed certificates (valid for 100 years) is provided in the `conf
 
 #### Generating new certificates
 
-You can regenerate these certificates using OpenSSL:
+The server requires the `ApplicationURI` (`urn:open62541pp.server.application:ros2_opc_ua`) to be present in the Subject Alternative Name (SAN) of the certificate.
 
-```bash
-# 1. Generate PEM certificate and private key
-openssl req -x509 -newkey rsa:2048 \
-  -keyout server_key.pem \
-  -out server_cert.pem \
-  -days 365 -nodes \
-  -subj "/CN=ros2_opc_ua example server/O=ROS 2/C=DE"
+1.  Create a configuration file `san.cnf`:
 
-# 2. Convert Certificate to DER format
-openssl x509 -outform der -in server_cert.pem -out server_cert.der
+    ```ini
+    [req]
+    distinguished_name = req_distinguished_name
+    x509_extensions = v3_req
+    prompt = no
 
-# 3. Convert Private Key to DER format
-openssl rsa -outform der -in server_key.pem -out server_key.der
-```
+    [req_distinguished_name]
+    C = DE
+    O = ROS 2
+    CN = ros2_opc_ua example server
+
+    [v3_req]
+    keyUsage = critical, digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+    extendedKeyUsage = serverAuth, clientAuth
+    subjectAltName = @alt_names
+
+    [alt_names]
+    URI.1 = urn:open62541pp.server.application:ros2_opc_ua
+    DNS.1 = localhost
+    IP.1 = 127.0.0.1
+    ```
+
+2.  Run OpenSSL:
+
+    ```bash
+    # 1. Generate PEM certificate and private key using the config
+    openssl req -x509 -newkey rsa:2048 \
+      -keyout server_key.pem \
+      -out server_cert.pem \
+      -days 36500 -nodes \
+      -config san.cnf
+
+    # 2. Convert Certificate to DER format
+    openssl x509 -outform der -in server_cert.pem -out server_cert.der
+
+    # 3. Convert Private Key to DER format
+    openssl rsa -outform der -in server_key.pem -out server_key.der
+    ```
 
 ### Running the ROS 2 Control Node
 
