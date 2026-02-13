@@ -65,7 +65,7 @@ namespace opcua_hardware_interface
             for (const auto& server : servers) {
                 std::stringstream ss;
                 const auto& name = server.applicationUri();
-                ss  << "Server[" << serverIndex++ << "] " << name << "\n"
+                ss  << "\nServer[" << serverIndex++ << "] " << name << "\n"
                     << "\tName:             " << server.applicationName().text() << "\n"
                     << "\tApplication URI:  " << server.applicationUri() << "\n"
                     << "\tProduct URI:      " << server.productUri() << "\n"
@@ -88,7 +88,7 @@ namespace opcua_hardware_interface
                             << "\t- Transport profile: " << endpoint.transportProfileUri() << "\n"
                             << "\t- Security mode:     " << toString(endpoint.securityMode()) << "\n"
                             << "\t- Security profile:  " << endpoint.securityPolicyUri() << "\n"
-                            << "\t- Security level:    " << endpoint.securityLevel() << "\n"
+                            << "\t- Security level:    " << static_cast<int>(endpoint.securityLevel()) << (endpoint.securityLevel() == 0 ? " (None)" : "") << "\n"
                             << "\t- User identity token:\n";
 
                         for (const auto& token : endpoint.userIdentityTokens()) {

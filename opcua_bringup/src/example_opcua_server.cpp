@@ -7,6 +7,8 @@
 #include <open62541pp/plugin/accesscontrol_default.hpp>
 #include <open62541pp/server.hpp>
 
+#include "rclcpp/rclcpp.hpp"
+
 using namespace opcua;
 
 // Custom access control based on AccessControlDefault.
@@ -43,8 +45,15 @@ class AccessControlCustom : public AccessControlDefault
     }
 };
 
-int main()
+int main(int argc, char **argv)
 {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<rclcpp::Node>("opcua_server_node");
+    
+    // Declare the parameter "allow_anonymous" with a default value of false
+    // This allows enabling/disabling anonymous access via ROS 2 parameters
+    bool allow_anonymous = node->declare_parameter("allow_anonymous", false);
+
     opcua::ServerConfig config;
 
     // Use handle to access the open62541 methods
@@ -70,7 +79,7 @@ int main()
 
     // Exchanging usernames/passwords without encryption as plain text is dangerous.
     // We are doing this just for demonstration, don't use it in production!
-    AccessControlCustom accessControl{true, // allow anonymous
+    AccessControlCustom accessControl{allow_anonymous, // allow anonymous set via ROS 2 parameter
                                       {
                                           Login{String{"admin"}, String{"ua_password"}},
                                       }};
@@ -156,4 +165,5 @@ int main()
     server.run();
 
     opcua::removeCallback(server, id1);
+    rclcpp::shutdown();
 }

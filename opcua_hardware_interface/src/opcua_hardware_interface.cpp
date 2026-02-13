@@ -72,6 +72,7 @@ bool OPCUAHardwareInterface::configure_ua_client()
 
         if (!username.empty())
         {
+            client.config()->userTokenPolicy.tokenType = static_cast<UA_UserTokenType>(opcua::UserTokenType::Username);
             client.config().setUserIdentityToken(opcua::UserNameIdentityToken{username, password});
         }
         // Connect to the server using the credentials from the URDF
