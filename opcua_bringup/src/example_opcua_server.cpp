@@ -26,9 +26,7 @@
 
 // Include create_certificate if available, otherwise we will use external files
 #include <open62541pp/config.hpp>
-#if UAPP_HAS_CREATE_CERTIFICATE
 #include <open62541pp/plugin/create_certificate.hpp>
-#endif
 
 #include "rclcpp/rclcpp.hpp"
 
