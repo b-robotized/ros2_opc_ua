@@ -27,6 +27,6 @@ install(TARGETS
 install(
   DIRECTORY urdf launch config
   DESTINATION share/${PROJECT_NAME}
-)  
+)
 
 ament_package()
