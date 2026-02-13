@@ -88,7 +88,7 @@ void print_servers_info(
   {
     std::stringstream ss;
     const auto & name = server.applicationUri();
-    ss << "Server[" << serverIndex++ << "] " << name << "\n"
+    ss << "\nServer[" << serverIndex++ << "] " << name << "\n"
        << "\tName:             " << server.applicationName().text() << "\n"
        << "\tApplication URI:  " << server.applicationUri() << "\n"
        << "\tProduct URI:      " << server.productUri() << "\n"
@@ -98,7 +98,7 @@ void print_servers_info(
     const auto discoveryUrls = server.discoveryUrls();
     if (discoveryUrls.empty())
     {
-      ss << "No discovery urls provided. Skip endpoint search.";
+      ss << "\tNo discovery urls provided. Skip endpoint search.\n";
     }
     for (const auto & url : discoveryUrls)
     {

@@ -154,24 +154,32 @@ bool OPCUAHardwareInterface::configure_ua_client()
     int bestScore = -1;
 
     // Helper to score security policies
-    auto getSecurityScore = [](opcua::MessageSecurityMode mode)
+    auto getSecurityScore = [](const opcua::ua::EndpointDescription & ep)
     {
-      switch (mode)
+      int score = 0;
+      // Prioritize by Security Mode
+      switch (ep.securityMode())
       {
         case opcua::MessageSecurityMode::SignAndEncrypt:
-          return 3;
+          score += 300;
+          break;
         case opcua::MessageSecurityMode::Sign:
-          return 2;
+          score += 200;
+          break;
         case opcua::MessageSecurityMode::None:
-          return 1;
+          score += 100;
+          break;
         default:
           return 0;
       }
+      // Add Security Level (0-255) as tie-breaker/refinement
+      score += ep.securityLevel();
+      return score;
     };
 
     for (const auto & endpoint : endpoints)
     {
-      int score = getSecurityScore(endpoint.securityMode());
+      int score = getSecurityScore(endpoint);
       const opcua::ua::UserTokenPolicy * candidatePolicy = nullptr;
 
       // Check if we can authenticate with this endpoint
@@ -179,34 +187,50 @@ bool OPCUAHardwareInterface::configure_ua_client()
 
       for (const auto & tokenPolicy : endpoint.userIdentityTokens())
       {
-        if (!username.empty())
+        // Check if the token policy's security policy matches the endpoint's security policy
+        // or if it is empty (which means it inherits the endpoint's policy)
+        bool policyMatch = false;
+        if (tokenPolicy.securityPolicyUri().length() == 0)
         {
-          // Look for UserName policy
-          if (tokenPolicy.tokenType() == opcua::UserTokenType::Username)
-          {
-            candidatePolicy = &tokenPolicy;
-            canAuth = true;
-            break;
-          }
-        }
-        else if (!cert_path.empty())
-        {
-          // Look for Certificate policy
-          if (tokenPolicy.tokenType() == opcua::UserTokenType::Certificate)
-          {
-            candidatePolicy = &tokenPolicy;
-            canAuth = true;
-            break;
-          }
+          policyMatch = true;
         }
         else
         {
-          // Anonymous
-          if (tokenPolicy.tokenType() == opcua::UserTokenType::Anonymous)
+          if (UA_String_equal(
+                tokenPolicy.securityPolicyUri().handle(), endpoint.securityPolicyUri().handle()))
           {
-            candidatePolicy = &tokenPolicy;
-            canAuth = true;
-            break;
+            policyMatch = true;
+          }
+        }
+
+        if (policyMatch)
+        {
+          if (!username.empty())
+          {
+            if (tokenPolicy.tokenType() == opcua::UserTokenType::Username)
+            {
+              candidatePolicy = &tokenPolicy;
+              canAuth = true;
+              break;
+            }
+          }
+          else if (!cert_path.empty())
+          {
+            if (tokenPolicy.tokenType() == opcua::UserTokenType::Certificate)
+            {
+              candidatePolicy = &tokenPolicy;
+              canAuth = true;
+              break;
+            }
+          }
+          else
+          {
+            if (tokenPolicy.tokenType() == opcua::UserTokenType::Anonymous)
+            {
+              candidatePolicy = &tokenPolicy;
+              canAuth = true;
+              break;
+            }
           }
         }
       }
