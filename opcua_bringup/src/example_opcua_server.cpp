@@ -152,59 +152,58 @@ int main(int argc, char ** argv)
   opcua::ByteString certificate;
   opcua::ByteString privateKey;
 
-  // Load or Generate Certificates if security is needed
-  if (security_policy != "None")
+  // Load or Generate Certificates
+  // We ALWAYS try to load or generate certificates if possible, because even for "None" security
+  // policy or "Sign" (without Encrypt), we might want to have certificates configured to support
+  // all endpoints. The 'security.policy' parameter mainly guides whether we enforce them or error
+  // out if missing, but if we can load them, we should.
+
+  // Try loading from file
+  try
   {
-    // Try loading from file
+    std::ifstream f(cert_path);
+    if (f.good())
+    {
+      certificate = readFile(cert_path);
+      privateKey = readFile(key_path);
+      RCLCPP_INFO(node->get_logger(), "Loaded certificate from %s", cert_path.c_str());
+    }
+    else if (!cert_path.empty())  // Only warn if path was explicitly set or defaulted non-empty
+    {
+      RCLCPP_WARN(node->get_logger(), "Certificate not found at %s", cert_path.c_str());
+    }
+  }
+  catch (...)
+  {
+  }
+
+  // If loading failed and auto-generate is enabled
+  if ((certificate.empty() || privateKey.empty()) && auto_generate_certs)
+  {
+    RCLCPP_INFO(node->get_logger(), "Generating self-signed certificate...");
     try
     {
-      std::ifstream f(cert_path);
-      if (f.good())
-      {
-        certificate = readFile(cert_path);
-        privateKey = readFile(key_path);
-        RCLCPP_INFO(node->get_logger(), "Loaded certificate from %s", cert_path.c_str());
-      }
-      else
-      {
-        RCLCPP_WARN(node->get_logger(), "Certificate not found at %s", cert_path.c_str());
-      }
+      auto result = opcua::createCertificate(
+        {{"CN", "ros2_opc_ua example server"}, {"O", "ROS 2"}},
+        {{"DNS", "localhost"}, {"URI", "urn:open62541pp.server.application:ros2_opc_ua"}});
+      certificate = std::move(result.certificate);
+      privateKey = std::move(result.privateKey);
     }
-    catch (...)
+    catch (const std::exception & e)
     {
-    }
-
-    // If loading failed and auto-generate is enabled
-    if ((certificate.empty() || privateKey.empty()) && auto_generate_certs)
-    {
-#if UAPP_HAS_CREATE_CERTIFICATE
-      RCLCPP_INFO(node->get_logger(), "Generating self-signed certificate...");
-      try
-      {
-        auto result = opcua::createCertificate(
-          {{"CN", "ros2_opc_ua example server"}, {"O", "ROS 2"}},
-          {{"DNS", "localhost"}, {"URI", "urn:open62541pp.server.application:ros2_opc_ua"}});
-        certificate = std::move(result.certificate);
-        privateKey = std::move(result.privateKey);
-      }
-      catch (const std::exception & e)
-      {
-        RCLCPP_ERROR(node->get_logger(), "Certificate generation failed: %s", e.what());
-        return 1;
-      }
-#else
-      RCLCPP_ERROR(node->get_logger(), "Auto-generation requested but not supported by build.");
-      return 1;
-#endif
-    }
-
-    if (certificate.empty() || privateKey.empty())
-    {
-      RCLCPP_ERROR(
-        node->get_logger(),
-        "Security enabled but no valid certificate found or generated. Exiting.");
+      RCLCPP_ERROR(node->get_logger(), "Certificate generation failed: %s", e.what());
       return 1;
     }
+  }
+
+  // Check requirements based on requested policy
+  if (security_policy != "None" && (certificate.empty() || privateKey.empty()))
+  {
+    RCLCPP_ERROR(
+      node->get_logger(),
+      "Security Policy '%s' requested but no valid certificate found or generated. Exiting.",
+      security_policy.c_str());
+    return 1;
   }
 
   // Create server config
