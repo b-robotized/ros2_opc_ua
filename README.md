@@ -57,4 +57,3 @@ Use the `controller_manager/introspection` topic to inspect the value of the sta
 ```
 ros2 topic echo /controller_manager/introspection_data/full
 ```
-
