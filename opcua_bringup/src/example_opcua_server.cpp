@@ -131,56 +131,39 @@ int main(int argc, char ** argv)
   auto node = std::make_shared<rclcpp::Node>("opcua_server_node");
 
   // Declare parameters
-  // bool allow_anonymous = node->declare_parameter("allow_anonymous", true); // always allowed in
-  // this example
-  std::string security_policy =
-    node->declare_parameter("security.policy", "Sign");  // None, Sign, SignAndEncrypt
   std::string cert_path = node->declare_parameter("security.certificate_path", "");
   std::string key_path = node->declare_parameter("security.private_key_path", "");
-  bool auto_generate_certs = node->declare_parameter("security.auto_generate_certificates", false);
-
-  // If paths are empty, try to find them in the package share directory or source dir as fallback
-  // (Though typically launch file provides them)
-  if (cert_path.empty() || key_path.empty())
-  {
-    // Fallback for running without launch file in dev environment
-    cert_path = "src/ros2_opc_ua/opcua_bringup/config/server_cert.der";
-    key_path = "src/ros2_opc_ua/opcua_bringup/config/server_key.der";
-    RCLCPP_WARN(
-      node->get_logger(), "No certificate paths provided. Using fallback dev paths: %s",
-      cert_path.c_str());
-  }
 
   opcua::ByteString certificate;
   opcua::ByteString privateKey;
 
-  // Load or Generate Certificates
-  // We ALWAYS try to load or generate certificates if possible, because even for "None" security
-  // policy or "Sign" (without Encrypt), we might want to have certificates configured to support
-  // all endpoints. The 'security.policy' parameter mainly guides whether we enforce them or error
-  // out if missing, but if we can load them, we should.
-
-  // Try loading from file
-  try
+  // 1. Try to load from file if paths are provided
+  if (!cert_path.empty() && !key_path.empty())
   {
-    std::ifstream f(cert_path);
-    if (f.good())
+    try
     {
-      certificate = readFile(cert_path);
-      privateKey = readFile(key_path);
-      RCLCPP_INFO(node->get_logger(), "Loaded certificate from %s", cert_path.c_str());
+      std::ifstream f(cert_path);
+      if (f.good())
+      {
+        certificate = readFile(cert_path);
+        privateKey = readFile(key_path);
+        RCLCPP_INFO(node->get_logger(), "Loaded certificate from %s", cert_path.c_str());
+      }
+      else
+      {
+        RCLCPP_WARN(
+          node->get_logger(), "Certificate not found at %s. Will attempt generation.",
+          cert_path.c_str());
+      }
     }
-    else if (!cert_path.empty())  // Only warn if path was explicitly set or defaulted non-empty
+    catch (...)
     {
-      RCLCPP_WARN(node->get_logger(), "Certificate not found at %s", cert_path.c_str());
+      RCLCPP_WARN(node->get_logger(), "Error reading certificate files. Will attempt generation.");
     }
   }
-  catch (...)
-  {
-  }
 
-  // If loading failed and auto-generate is enabled
-  if ((certificate.empty() || privateKey.empty()) && auto_generate_certs)
+  // 2. If no certificate loaded yet, try to generate one
+  if (certificate.empty() || privateKey.empty())
   {
     RCLCPP_INFO(node->get_logger(), "Generating self-signed certificate...");
     try
@@ -193,18 +176,7 @@ int main(int argc, char ** argv)
     catch (const std::exception & e)
     {
       RCLCPP_ERROR(node->get_logger(), "Certificate generation failed: %s", e.what());
-      return 1;
     }
-  }
-
-  // Check requirements based on requested policy
-  if (security_policy != "None" && (certificate.empty() || privateKey.empty()))
-  {
-    RCLCPP_ERROR(
-      node->get_logger(),
-      "Security Policy '%s' requested but no valid certificate found or generated. Exiting.",
-      security_policy.c_str());
-    return 1;
   }
 
   // Create server config
@@ -220,6 +192,9 @@ int main(int argc, char ** argv)
   else
   {
     // Config without encryption (only None)
+    RCLCPP_WARN(
+      node->get_logger(),
+      "Starting server without certificates. Only 'None' security policy will be available.");
     config_ptr = std::make_unique<opcua::ServerConfig>();
   }
 
