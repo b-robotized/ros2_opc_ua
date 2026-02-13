@@ -1,0 +1,15 @@
+<launch>
+  <arg name="security_policy" default="Sign" description="Security Policy: None, Sign, or SignAndEncrypt"/>
+  <arg name="certificate_path" default="$(find-pkg-share opcua_bringup)/config/server_cert.der" description="Path to the server certificate (DER format)"/>
+  <arg name="private_key_path" default="$(find-pkg-share opcua_bringup)/config/server_key.der" description="Path to the server private key (DER format)"/>
+  <arg name="auto_generate_certificates" default="false" description="Automatically generate certificates if missing"/>
+  <arg name="allow_anonymous" default="true" description="Allow anonymous access"/>
+
+  <node pkg="opcua_bringup" exec="example_opcua_server" name="opcua_server" output="screen">
+    <param name="security.policy" value="$(var security_policy)"/>
+    <param name="security.certificate_path" value="$(var certificate_path)"/>
+    <param name="security.private_key_path" value="$(var private_key_path)"/>
+    <param name="security.auto_generate_certificates" value="$(var auto_generate_certificates)"/>
+    <param name="allow_anonymous" value="$(var allow_anonymous)"/>
+  </node>
+</launch>
