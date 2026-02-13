@@ -43,6 +43,21 @@ namespace opcua_hardware_interface
             }
         }
 
+        std::string toString(opcua::UserTokenType tokenType) {
+            switch (tokenType) {
+            case opcua::UserTokenType::Anonymous:
+                return "Anonymous";
+            case opcua::UserTokenType::Username:
+                return "UserName";
+            case opcua::UserTokenType::Certificate:
+                return "Certificate";
+            case opcua::UserTokenType::IssuedToken:
+                return "IssuedToken";
+            default:
+                return "Unknown";
+            }
+        }
+
         void print_servers_info(const std::vector<opcua::ApplicationDescription> & servers, const rclcpp::Logger & logger)
         {
             size_t serverIndex = 0;
@@ -77,7 +92,7 @@ namespace opcua_hardware_interface
                             << "\t- User identity token:\n";
 
                         for (const auto& token : endpoint.userIdentityTokens()) {
-                            ss << "\t  - " << token.policyId() << "\n";
+                            ss << "\t  - PolicyId: " << token.policyId() << ", TokenType: " << toString(token.tokenType()) << "\n";
                         }
                     }
                 }
