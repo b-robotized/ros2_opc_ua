@@ -188,8 +188,7 @@ int main(int argc, char ** argv)
     try
     {
       auto result = opcua::createCertificate(
-        {{"CN", "ros2_opc_ua example server"}, {"O", "ROS 2"}},
-        {{"DNS", "localhost"}, {"URI", APP_URI}});
+        {{"CN", APP_NAME}, {"O", "ROS 2"}}, {{"DNS", "localhost"}, {"URI", APP_URI}});
       certificate = std::move(result.certificate);
       privateKey = std::move(result.privateKey);
     }
@@ -270,6 +269,62 @@ int main(int argc, char ** argv)
     else
     {
       endpoint->securityLevel = 0;
+    }
+
+    // Force standard Policy IDs for User Token Policies
+    for (size_t j = 0; j < endpoint->userIdentityTokensSize; ++j)
+    {
+      UA_UserTokenPolicy * policy = &endpoint->userIdentityTokens[j];
+      if (policy->tokenType == UA_USERTOKENTYPE_USERNAME)
+      {
+        UA_String_clear(&policy->policyId);
+
+        // Construct PolicyID based on Security Policy
+        // Format: UserName_<Algorithm>_Token
+        std::string policyUri(
+          reinterpret_cast<char *>(policy->securityPolicyUri.data),
+          policy->securityPolicyUri.length);
+        std::string algorithm = "None";
+
+        if (policyUri.find("Basic128Rsa15") != std::string::npos)
+        {
+          algorithm = "Basic128Rsa15";
+        }
+        else if (policyUri.find("Basic256Sha256") != std::string::npos)
+        {
+          algorithm = "Basic256Sha256";
+        }
+        else if (policyUri.find("Basic256") != std::string::npos)
+        {
+          algorithm = "Basic256";
+        }
+        else if (policyUri.find("Aes128_Sha256_RsaOaep") != std::string::npos)
+        {
+          algorithm = "Aes128Sha256RsaOaep";
+        }
+        else if (policyUri.find("Aes256_Sha256_RsaPss") != std::string::npos)
+        {
+          algorithm = "Aes256Sha256RsaPss";
+        }
+
+        // Special case for None
+        if (algorithm == "None")
+        {
+          // For None security policy, the username token is usually unencrypted or encrypted with
+          // None (?) Actually, OPC UA spec says UserName token policy usually has a security policy
+          // URI associated with it. If the endpoint is None, the token policy must be None or use a
+          // specific policy if available. open62541 default for None endpoint is UserName with None
+          // policy. Let's call it UserName_None_Token or similar if we want consistent naming, but
+          // standard usually implies encryption. If the user wants specific names, we enforce them.
+          // If algorithm is None, we might skip "Token" suffix or keep it.
+          policy->policyId = UA_STRING_ALLOC("UserName_None_Token");
+        }
+        else
+        {
+          std::string newId = "UserName_" + algorithm + "_Token";
+          policy->policyId = UA_STRING_ALLOC(newId.c_str());
+        }
+      }
     }
   }
 
