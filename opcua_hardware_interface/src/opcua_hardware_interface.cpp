@@ -83,6 +83,9 @@ bool OPCUAHardwareInterface::configure_ua_client()
         // Set Security Mode
         client.config()->securityMode = UA_MESSAGESECURITYMODE_NONE;
 
+        UA_String_clear(&client.config()->securityPolicyUri);
+        client.config()->securityPolicyUri = UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#None");
+
         if (!username.empty())
         {
             // Create UserNameIdentityToken manually to set PolicyId
@@ -90,7 +93,7 @@ bool OPCUAHardwareInterface::configure_ua_client()
             if (identityToken) {
                 identityToken->userName = UA_STRING_ALLOC(username.c_str());
                 identityToken->password = UA_STRING_ALLOC(password.c_str());
-                identityToken->policyId = UA_STRING_ALLOC("open62541-username-policy-none#None");
+                identityToken->policyId = UA_STRING_ALLOC("UserName_Basic128Rsa15_Token");
 
                 UA_ExtensionObject_clear(&client.config()->userIdentityToken);
                 UA_ExtensionObject_setValue(&client.config()->userIdentityToken, identityToken,
