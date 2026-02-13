@@ -37,6 +37,10 @@ using opcua::AccessLevel;
 using opcua::ua::DataTypeId;
 using opcua::ua::EndpointDescription;
 
+// Constants
+static const char * APP_NAME = "ros2_opc_ua server example";
+static const char * APP_URI = "urn:open62541pp.server.application:ros2_opc_ua";
+
 // Helper to read file content
 static opcua::ByteString readFile(const std::string & path)
 {
@@ -185,7 +189,7 @@ int main(int argc, char ** argv)
     {
       auto result = opcua::createCertificate(
         {{"CN", "ros2_opc_ua example server"}, {"O", "ROS 2"}},
-        {{"DNS", "localhost"}, {"URI", "urn:open62541pp.server.application:ros2_opc_ua"}});
+        {{"DNS", "localhost"}, {"URI", APP_URI}});
       certificate = std::move(result.certificate);
       privateKey = std::move(result.privateKey);
     }
@@ -242,8 +246,8 @@ int main(int argc, char ** argv)
   ua_server_config->serverUrlsSize = 1;
   ua_server_config->serverUrls[0] = UA_STRING_ALLOC(url.c_str());
 
-  config.setApplicationName("ros2_opc_ua server example");
-  config.setApplicationUri("urn:open62541pp.server.application:ros2_opc_ua");
+  config.setApplicationName(APP_NAME);
+  config.setApplicationUri(APP_URI);
 
   // Configure User Token Policies - using defaults plus AccessControl logic for now
   // as manual configuration of policies via low-level API is version dependent.
