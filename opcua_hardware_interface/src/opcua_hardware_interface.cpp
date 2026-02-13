@@ -17,9 +17,12 @@
 #include <charconv>   // std::from_chars
 #include <cmath>      //  std::isnan
 #include <cstdint>
+#include <fstream>
 #include <limits>
 #include <regex>
 #include <vector>
+
+#include "open62541/client_config_default.h"
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "opcua_hardware_interface/opcua_hardware_interface.hpp"
@@ -28,6 +31,30 @@
 
 namespace opcua_hardware_interface
 {
+// Helper to read file content
+static opcua::ByteString readFile(const std::string & path)
+{
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file)
+  {
+    return opcua::ByteString{};
+  }
+  std::streamsize size = file.tellg();
+  file.seekg(0, std::ios::beg);
+
+  if (size <= 0)
+  {
+    return opcua::ByteString{};
+  }
+
+  std::vector<char> buffer(static_cast<size_t>(size));
+  if (file.read(buffer.data(), size))
+  {
+    return opcua::ByteString(std::string_view(buffer.data(), static_cast<size_t>(size)));
+  }
+  return opcua::ByteString{};
+}
+
 hardware_interface::CallbackReturn OPCUAHardwareInterface::on_init(
   const hardware_interface::HardwareComponentParams & /*params*/)
 {
@@ -62,12 +89,14 @@ bool OPCUAHardwareInterface::configure_ua_client()
   {
     std::string ip_address = params.at("ip");
     std::string port_number = params.at("port");
-    std::string username = params.at("user");
-    std::string password = params.at("password");
+    std::string username = params.count("user") ? params.at("user") : "";
+    std::string password = params.count("password") ? params.at("password") : "";
+    std::string cert_path =
+      params.count("security.certificate_path") ? params.at("security.certificate_path") : "";
+    std::string key_path =
+      params.count("security.private_key_path") ? params.at("security.private_key_path") : "";
 
     // Validate the format of the Ip Address using regular expressions
-    // Src:
-    // https://stackoverflow.com/questions/5284147/validating-ipv4-addresses-with-regexp?page=1&tab=scoredesc#tab-top
     const std::regex pattern("^((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\\.(?!$)|$)){4}$");
     if (!std::regex_match(ip_address, pattern))
     {
@@ -78,47 +107,193 @@ bool OPCUAHardwareInterface::configure_ua_client()
     // Set the OPC Server URL
     std::string endpoint_url = "opc.tcp://" + ip_address + ":" + port_number;
 
-    // Find all servers
+    // Load Client Certificates if provided
+    if (!cert_path.empty() && !key_path.empty())
+    {
+      opcua::ByteString cert = readFile(cert_path);
+      opcua::ByteString key = readFile(key_path);
+      if (!cert.empty() && !key.empty())
+      {
+        RCLCPP_INFO(getLogger(), "Loaded client certificate from %s", cert_path.c_str());
+
+        // Set encryption using open62541 helper
+        // We need to cast our wrapper ByteString to UA_ByteString
+        // Wrapper ByteString inherits/wraps UA_ByteString.
+        // .handle() returns UA_ByteString*
+
+        UA_StatusCode retval = UA_ClientConfig_setDefaultEncryption(
+          client.config().handle(), *cert.handle(), *key.handle(), nullptr, 0, nullptr, 0);
+
+        if (retval != UA_STATUSCODE_GOOD)
+        {
+          RCLCPP_ERROR(
+            getLogger(), "Failed to set default encryption: %s", UA_StatusCode_name(retval));
+        }
+      }
+      else
+      {
+        RCLCPP_ERROR(getLogger(), "Failed to read client certificate/key files.");
+      }
+    }
+
+    // Find all servers (optional, for debugging)
     const auto servers = client.findServers(endpoint_url);
     opcua_helpers::print_servers_info(servers, getLogger());
 
-    // Set Application URI and Name
+    // Get Endpoints to select the best one
+    auto endpoints = client.getEndpoints(endpoint_url);
+    if (endpoints.empty())
+    {
+      RCLCPP_FATAL(getLogger(), "No endpoints found at %s", endpoint_url.c_str());
+      return false;
+    }
+
+    // Selection Logic
+    const opcua::ua::EndpointDescription * selectedEndpoint = nullptr;
+    const opcua::ua::UserTokenPolicy * selectedTokenPolicy = nullptr;
+    int bestScore = -1;
+
+    // Helper to score security policies
+    auto getSecurityScore = [](opcua::MessageSecurityMode mode)
+    {
+      switch (mode)
+      {
+        case opcua::MessageSecurityMode::SignAndEncrypt:
+          return 3;
+        case opcua::MessageSecurityMode::Sign:
+          return 2;
+        case opcua::MessageSecurityMode::None:
+          return 1;
+        default:
+          return 0;
+      }
+    };
+
+    for (const auto & endpoint : endpoints)
+    {
+      int score = getSecurityScore(endpoint.securityMode());
+      const opcua::ua::UserTokenPolicy * candidatePolicy = nullptr;
+
+      // Check if we can authenticate with this endpoint
+      bool canAuth = false;
+
+      for (const auto & tokenPolicy : endpoint.userIdentityTokens())
+      {
+        if (!username.empty())
+        {
+          // Look for UserName policy
+          if (tokenPolicy.tokenType() == opcua::UserTokenType::Username)
+          {
+            candidatePolicy = &tokenPolicy;
+            canAuth = true;
+            break;
+          }
+        }
+        else if (!cert_path.empty())
+        {
+          // Look for Certificate policy
+          if (tokenPolicy.tokenType() == opcua::UserTokenType::Certificate)
+          {
+            candidatePolicy = &tokenPolicy;
+            canAuth = true;
+            break;
+          }
+        }
+        else
+        {
+          // Anonymous
+          if (tokenPolicy.tokenType() == opcua::UserTokenType::Anonymous)
+          {
+            candidatePolicy = &tokenPolicy;
+            canAuth = true;
+            break;
+          }
+        }
+      }
+
+      if (canAuth && score > bestScore)
+      {
+        bestScore = score;
+        selectedEndpoint = &endpoint;
+        selectedTokenPolicy = candidatePolicy;
+      }
+    }
+
+    if (!selectedEndpoint || !selectedTokenPolicy)
+    {
+      RCLCPP_FATAL(getLogger(), "Could not find a suitable endpoint for provided credentials.");
+      return false;
+    }
+
+    auto to_std_string = [](const opcua::String & s)
+    { return std::string(reinterpret_cast<char *>(s->data), s->length); };
+
+    RCLCPP_INFO(
+      getLogger(), "Selected Endpoint: %s",
+      to_std_string(selectedEndpoint->securityPolicyUri()).c_str());
+    RCLCPP_INFO(
+      getLogger(), "Selected Security Mode: %s",
+      opcua_helpers::toString(selectedEndpoint->securityMode()).c_str());
+    RCLCPP_INFO(
+      getLogger(), "Selected User Token Policy: %s",
+      to_std_string(selectedTokenPolicy->policyId()).c_str());
+
+    // Configure Client
+    client.config()->securityMode =
+      static_cast<UA_MessageSecurityMode>(selectedEndpoint->securityMode());
+    UA_String_clear(&client.config()->securityPolicyUri);
+    UA_String_copy(
+      selectedEndpoint->securityPolicyUri().handle(), &client.config()->securityPolicyUri);
+
+    // Set Application URI and Name (Important for connection)
     std::string app_uri = "urn:ros2_opc_ua.client.hw_itf:" + info_.name;
     std::string app_name = "ros2_opc_ua client - ros2_control Hardware Interface - " + info_.name;
 
     UA_String_clear(&client.config()->clientDescription.applicationUri);
     client.config()->clientDescription.applicationUri = UA_STRING_ALLOC(app_uri.c_str());
-
     UA_LocalizedText_clear(&client.config()->clientDescription.applicationName);
     client.config()->clientDescription.applicationName =
       UA_LOCALIZEDTEXT_ALLOC("en", app_name.c_str());
 
-    // Set Security Mode
-    client.config()->securityMode = UA_MESSAGESECURITYMODE_NONE;
-
-    UA_String_clear(&client.config()->securityPolicyUri);
-    client.config()->securityPolicyUri =
-      UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#None");
-
-    if (!username.empty())
+    // Set User Identity
+    if (selectedTokenPolicy->tokenType() == opcua::UserTokenType::Username)
     {
-      // Create UserNameIdentityToken manually to set PolicyId
       UA_UserNameIdentityToken * identityToken = UA_UserNameIdentityToken_new();
-      if (identityToken)
-      {
-        identityToken->userName = UA_STRING_ALLOC(username.c_str());
-        identityToken->password = UA_STRING_ALLOC(password.c_str());
-        identityToken->policyId = UA_STRING_ALLOC("UserName_Basic128Rsa15_Token");
+      identityToken->userName = UA_STRING_ALLOC(username.c_str());
+      identityToken->password = UA_STRING_ALLOC(password.c_str());
+      // Use the policyId from the server
+      UA_String_copy(selectedTokenPolicy->policyId().handle(), &identityToken->policyId);
 
-        UA_ExtensionObject_clear(&client.config()->userIdentityToken);
-        UA_ExtensionObject_setValue(
-          &client.config()->userIdentityToken, identityToken,
-          &UA_TYPES[UA_TYPES_USERNAMEIDENTITYTOKEN]);
-      }
-      else
+      UA_ExtensionObject_clear(&client.config()->userIdentityToken);
+      UA_ExtensionObject_setValue(
+        &client.config()->userIdentityToken, identityToken,
+        &UA_TYPES[UA_TYPES_USERNAMEIDENTITYTOKEN]);
+    }
+    else if (selectedTokenPolicy->tokenType() == opcua::UserTokenType::Certificate)
+    {
+      UA_X509IdentityToken * identityToken = UA_X509IdentityToken_new();
+      UA_String_copy(selectedTokenPolicy->policyId().handle(), &identityToken->policyId);
+
+      // Pass the loaded certificate data if available
+      opcua::ByteString cert = readFile(cert_path);
+      if (!cert.empty())
       {
-        RCLCPP_ERROR(getLogger(), "Failed to allocate UserNameIdentityToken");
+        UA_ByteString_copy(cert.handle(), &identityToken->certificateData);
       }
+
+      UA_ExtensionObject_clear(&client.config()->userIdentityToken);
+      UA_ExtensionObject_setValue(
+        &client.config()->userIdentityToken, identityToken, &UA_TYPES[UA_TYPES_X509IDENTITYTOKEN]);
+    }
+    else
+    {
+      // Anonymous
+      UA_AnonymousIdentityToken * identityToken = UA_AnonymousIdentityToken_new();
+      UA_String_copy(selectedTokenPolicy->policyId().handle(), &identityToken->policyId);
+      UA_ExtensionObject_clear(&client.config()->userIdentityToken);
+      UA_ExtensionObject_setValue(
+        &client.config()->userIdentityToken, identityToken,
+        &UA_TYPES[UA_TYPES_ANONYMOUSIDENTITYTOKEN]);
     }
 
     // Print Client Configuration
