@@ -39,16 +39,45 @@ It is also possible to give them Admin rights by using the aatribute `isAdmin`.
 
 ##  Instructions
 
-Run the OPC UA server first:
-```
-ros2 run opcua_bringup example_opcua_server
-```
-if you want to enalble anonymous connect set the parameter:
-```
-ros2 run opcua_bringup example_opcua_server --ros-args -p allow_anonymous:=true
+### Running the Example Server
+
+The `example_opcua_server` is a demonstration server that supports:
+-   **Security Policies**: None, Sign, SignAndEncrypt.
+-   **Authentication**: Anonymous, Username/Password, Certificate.
+-   **Simulated Nodes**: Publishes simulated sensor data (scalar and array) and accepts commands.
+
+#### Option 1: Using ROS 2 Launch (Recommended)
+
+This is the easiest way to start the server as it automatically handles the certificate paths.
+
+```bash
+# Start with default settings (Sign policy, Anonymous allowed)
+ros2 launch opcua_bringup example_server.launch.xml
+
+# Start with 'SignAndEncrypt' policy
+ros2 launch opcua_bringup example_server.launch.xml security_policy:=SignAndEncrypt
+
+# Disable Anonymous access
+ros2 launch opcua_bringup example_server.launch.xml allow_anonymous:=false
 ```
 
-Then launch the `control node`:
+#### Option 2: Using ROS 2 Run
+
+You can run the executable directly, but you must provide the paths to the certificates if you use a secure policy.
+
+**Note:** The certificates are installed in the `share/opcua_bringup/config` directory.
+
+```bash
+# Run with 'Sign' policy (adjust paths if you are running from source)
+ros2 run opcua_bringup example_opcua_server --ros-args \
+    -p security.policy:=Sign \
+    -p security.certificate_path:=$(ros2 pkg prefix opcua_bringup)/share/opcua_bringup/config/server_cert.der \
+    -p security.private_key_path:=$(ros2 pkg prefix opcua_bringup)/share/opcua_bringup/config/server_key.der
+```
+
+### Running the ROS 2 Control Node
+
+Once the server is running, launch the `control node`:
 ```
 ros2 launch opcua_bringup opcua_bringup.launch.xml
 ```
