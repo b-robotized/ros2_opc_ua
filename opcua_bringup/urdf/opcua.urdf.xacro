@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="opcua_bot">
+
+  <!-- Use this if parameters are set from the launch file, otherwise delete -->
+
+  <xacro:arg name="mock_hardware" default="false"/>
+  <xacro:arg name="mock_sensor_commands" default="false"/>
+
+  <xacro:include filename="$(find opcua_bringup)/urdf/control/opcua_macro.ros2_control.xacro"/>
+
+  <!-- create link fixed to the "world" -->
+  <link name="world"/>
+
+  <xacro:opcua_ros2_control
+    name="opcua_bot"
+    mock_hardware="$(arg mock_hardware)"
+    mock_sensor_commands="$(arg mock_sensor_commands)"/>
+
+</robot>
