@@ -128,42 +128,100 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("opcua_server_node");
 
-  // Hardcode configuration for demonstration purposes as requested
-  // Certificates path (using the generated 100-year valid certs)
-  std::string cert_path = "src/ros2_opc_ua/opcua_bringup/config/server_cert.der";
-  std::string key_path = "src/ros2_opc_ua/opcua_bringup/config/server_key.der";
+  // Declare parameters
+  // bool allow_anonymous = node->declare_parameter("allow_anonymous", true); // always allowed in
+  // this example
+  std::string security_policy =
+    node->declare_parameter("security.policy", "Sign");  // None, Sign, SignAndEncrypt
+  std::string cert_path = node->declare_parameter("security.certificate_path", "");
+  std::string key_path = node->declare_parameter("security.private_key_path", "");
+  bool auto_generate_certs = node->declare_parameter("security.auto_generate_certificates", false);
 
-  // Try to resolve package path if running from install to find config
-  try
+  // If paths are empty, try to find them in the package share directory or source dir as fallback
+  // (Though typically launch file provides them)
+  if (cert_path.empty() || key_path.empty())
   {
-    std::ifstream f(cert_path);
-    if (!f.good())
+    // Fallback for running without launch file in dev environment
+    cert_path = "src/ros2_opc_ua/opcua_bringup/config/server_cert.der";
+    key_path = "src/ros2_opc_ua/opcua_bringup/config/server_key.der";
+    RCLCPP_WARN(
+      node->get_logger(), "No certificate paths provided. Using fallback dev paths: %s",
+      cert_path.c_str());
+  }
+
+  opcua::ByteString certificate;
+  opcua::ByteString privateKey;
+
+  // Load or Generate Certificates if security is needed
+  if (security_policy != "None")
+  {
+    // Try loading from file
+    try
     {
-      RCLCPP_WARN(
-        node->get_logger(), "Certificate not found at %s, checking if running from install...",
-        cert_path.c_str());
+      std::ifstream f(cert_path);
+      if (f.good())
+      {
+        certificate = readFile(cert_path);
+        privateKey = readFile(key_path);
+        RCLCPP_INFO(node->get_logger(), "Loaded certificate from %s", cert_path.c_str());
+      }
+      else
+      {
+        RCLCPP_WARN(node->get_logger(), "Certificate not found at %s", cert_path.c_str());
+      }
+    }
+    catch (...)
+    {
+    }
+
+    // If loading failed and auto-generate is enabled
+    if ((certificate.empty() || privateKey.empty()) && auto_generate_certs)
+    {
+#if UAPP_HAS_CREATE_CERTIFICATE
+      RCLCPP_INFO(node->get_logger(), "Generating self-signed certificate...");
+      try
+      {
+        auto result = opcua::createCertificate(
+          {{"CN", "ros2_opc_ua example server"}, {"O", "ROS 2"}},
+          {{"DNS", "localhost"}, {"URI", "urn:open62541pp.server.application:ros2_opc_ua"}});
+        certificate = std::move(result.certificate);
+        privateKey = std::move(result.privateKey);
+      }
+      catch (const std::exception & e)
+      {
+        RCLCPP_ERROR(node->get_logger(), "Certificate generation failed: %s", e.what());
+        return 1;
+      }
+#else
+      RCLCPP_ERROR(node->get_logger(), "Auto-generation requested but not supported by build.");
+      return 1;
+#endif
+    }
+
+    if (certificate.empty() || privateKey.empty())
+    {
+      RCLCPP_ERROR(
+        node->get_logger(),
+        "Security enabled but no valid certificate found or generated. Exiting.");
+      return 1;
     }
   }
-  catch (...)
+
+  // Create server config
+  std::unique_ptr<opcua::ServerConfig> config_ptr;
+
+  if (!certificate.empty() && !privateKey.empty())
   {
+    // Config with encryption
+    config_ptr = std::make_unique<opcua::ServerConfig>(
+      4840, certificate, privateKey, opcua::Span<const opcua::ByteString>{},
+      opcua::Span<const opcua::ByteString>{});
   }
-
-  opcua::ByteString certificate = readFile(cert_path);
-  opcua::ByteString privateKey = readFile(key_path);
-
-  if (certificate.empty() || privateKey.empty())
+  else
   {
-    RCLCPP_ERROR(
-      node->get_logger(), "Failed to load certificates from %s. Please run from workspace root.",
-      cert_path.c_str());
-    return 1;
+    // Config without encryption (only None)
+    config_ptr = std::make_unique<opcua::ServerConfig>();
   }
-
-  // Create server config with encryption support (Sign/SignAndEncrypt + None)
-  // This constructor automatically adds policies: None, Basic128Rsa15, Basic256, Basic256Sha256
-  auto config_ptr = std::make_unique<opcua::ServerConfig>(
-    4840, certificate, privateKey, opcua::Span<const opcua::ByteString>{},
-    opcua::Span<const opcua::ByteString>{});
 
   opcua::ServerConfig & config = *config_ptr;
 
@@ -171,7 +229,7 @@ int main(int argc, char ** argv)
   UA_ServerConfig * ua_server_config = config.handle();
 
   // Set Endpoint URL to bind to all interfaces
-  std::string url = "opc.tcp://0.0.0.0:4840";
+  std::string url = "opc.tcp://127.0.0.1:4840";
 
   if (ua_server_config->serverUrlsSize > 0)
   {
@@ -193,7 +251,7 @@ int main(int argc, char ** argv)
   // The ServerConfig constructor with certificates enables standard security policies.
 
   AccessControlCustom accessControl{
-    true,  // allow anonymous
+    true,  // allow anonymous (always allowed)
     {
       opcua::Login{opcua::String{"admin"}, opcua::String{"ua_password"}},
     },
