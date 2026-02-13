@@ -1,4 +1,4 @@
-// Copyright (c) 2026, b-robotized
+// Copyright (c) 2026, b»robotized group
 // All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
