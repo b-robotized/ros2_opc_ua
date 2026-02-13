@@ -64,9 +64,9 @@ int main()
     // allocate the string
     ua_server_config->serverUrls[0] = UA_STRING_ALLOC(url.c_str());
 
-    config.setApplicationName("open62541pp server example");
-    config.setApplicationUri("urn:open62541pp.server.application");
-    config.setProductUri("https://open62541pp.github.io");
+    config.setApplicationName("ros2_opc_ua server example (based on open62541pp)");
+    config.setApplicationUri("urn:open62541pp.server.application:ros2_opc_ua");
+    config.setProductUri("https://github.com/b-robotized/ros2_opc_ua");
 
     // Exchanging usernames/passwords without encryption as plain text is dangerous.
     // We are doing this just for demonstration, don't use it in production!

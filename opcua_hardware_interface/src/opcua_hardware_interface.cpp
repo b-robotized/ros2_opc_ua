@@ -64,7 +64,7 @@ bool OPCUAHardwareInterface::configure_ua_client()
         }
 
         // Set the OPC Server URL
-        std::string endpoint_url = "opc.tcp://" + ip_address + ":" + port_number + "/";
+        std::string endpoint_url = "opc.tcp://" + ip_address + ":" + port_number;
 
         // Find all servers
         const auto servers = client.findServers(endpoint_url);
