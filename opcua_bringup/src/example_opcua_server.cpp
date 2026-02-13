@@ -63,6 +63,105 @@ static opcua::ByteString readFile(const std::string & path)
   return opcua::ByteString{};
 }
 
+// Helpers for printing
+static std::string toString(UA_MessageSecurityMode mode)
+{
+  switch (mode)
+  {
+    case UA_MESSAGESECURITYMODE_INVALID:
+      return "Invalid";
+    case UA_MESSAGESECURITYMODE_NONE:
+      return "None";
+    case UA_MESSAGESECURITYMODE_SIGN:
+      return "Sign";
+    case UA_MESSAGESECURITYMODE_SIGNANDENCRYPT:
+      return "Sign and Encrypt";
+    default:
+      return "Unknown";
+  }
+}
+
+static std::string toString(UA_UserTokenType type)
+{
+  switch (type)
+  {
+    case UA_USERTOKENTYPE_ANONYMOUS:
+      return "Anonymous";
+    case UA_USERTOKENTYPE_USERNAME:
+      return "UserName";
+    case UA_USERTOKENTYPE_CERTIFICATE:
+      return "Certificate";
+    case UA_USERTOKENTYPE_ISSUEDTOKEN:
+      return "IssuedToken";
+    default:
+      return "Unknown";
+  }
+}
+
+static std::string to_string(const UA_String & s)
+{
+  if (s.length == 0)
+  {
+    return "";
+  }
+  return std::string(reinterpret_cast<char *>(s.data), s.length);
+}
+
+static void print_server_endpoints(const UA_ServerConfig * config, const rclcpp::Logger & logger)
+{
+  std::stringstream ss;
+  ss << "\nServer Configuration:\n";
+
+  // Application Info
+  ss << "\tName:             " << to_string(config->applicationDescription.applicationName.text)
+     << "\n"
+     << "\tApplication URI:  " << to_string(config->applicationDescription.applicationUri) << "\n"
+     << "\tProduct URI:      " << to_string(config->applicationDescription.productUri) << "\n";
+
+  // Endpoints
+  if (config->endpointsSize > 0)
+  {
+    ss << "\tEndpoints:\n";
+    for (size_t i = 0; i < config->endpointsSize; ++i)
+    {
+      const UA_EndpointDescription & endpoint = config->endpoints[i];
+      ss << "\t  Endpoint[" << i << "]:\n"
+         << "\t  - Endpoint URL:      " << to_string(endpoint.endpointUrl) << "\n"
+         << "\t  - Transport profile: " << to_string(endpoint.transportProfileUri) << "\n"
+         << "\t  - Security mode:     " << toString(endpoint.securityMode) << "\n"
+         << "\t  - Security profile:  " << to_string(endpoint.securityPolicyUri) << "\n"
+         << "\t  - Security level:    " << static_cast<int>(endpoint.securityLevel)
+         << (endpoint.securityLevel == 0 ? " (None)" : "") << "\n";
+
+      // Certificate info
+      if (endpoint.serverCertificate.length > 0)
+      {
+        ss << "\t  - Certificate:       Present (" << endpoint.serverCertificate.length
+           << " bytes)\n";
+      }
+      else
+      {
+        ss << "\t  - Certificate:       None\n";
+      }
+
+      ss << "\t  - User identity tokens:\n";
+
+      for (size_t j = 0; j < endpoint.userIdentityTokensSize; ++j)
+      {
+        const UA_UserTokenPolicy & token = endpoint.userIdentityTokens[j];
+        ss << "\t    - PolicyId: " << to_string(token.policyId)
+           << ", TokenType: " << toString(token.tokenType)
+           << ", SecurityPolicy: " << to_string(token.securityPolicyUri) << "\n";
+      }
+    }
+  }
+  else
+  {
+    ss << "\tNo endpoints configured.\n";
+  }
+  RCLCPP_INFO_STREAM(logger, ss.str());
+}
+
 // Custom access control based on AccessControlDefault.
 class AccessControlCustom : public AccessControlDefault
 {
@@ -226,18 +325,39 @@ int main(int argc, char ** argv)
   // The ServerConfig constructor with certificates enables standard security policies.
 
   // Manually update the security levels of the endpoints to allow clients to select the best one
-  // open62541 default logic often sets them based on policy URI length or similar,
-  // but we want to enforce standard recommendation: SignAndEncrypt > Sign > None.
+  // Security levels: None=0, Sign (older)=10, Sign (newer)=20, SignAndEncrypt (older)=110, SignAndEncrypt (newer)=120
   for (size_t i = 0; i < ua_server_config->endpointsSize; ++i)
   {
     UA_EndpointDescription * endpoint = &ua_server_config->endpoints[i];
     if (endpoint->securityMode == UA_MESSAGESECURITYMODE_SIGNANDENCRYPT)
     {
-      endpoint->securityLevel = 115;
+      if (
+        std::string(reinterpret_cast<char *>(endpoint->securityPolicyUri.data))
+            .find("Basic256Sha256") != std::string::npos ||
+        std::string(reinterpret_cast<char *>(endpoint->securityPolicyUri.data))
+            .find("Aes256_Sha256_RsaPss") != std::string::npos)
+      {
+        endpoint->securityLevel = 120;
+      }
+      else
+      {
+        endpoint->securityLevel = 110;
+      }
     }
     else if (endpoint->securityMode == UA_MESSAGESECURITYMODE_SIGN)
     {
-      endpoint->securityLevel = 65;
+      if (
+        std::string(reinterpret_cast<char *>(endpoint->securityPolicyUri.data))
+            .find("Basic256Sha256") != std::string::npos ||
+        std::string(reinterpret_cast<char *>(endpoint->securityPolicyUri.data))
+            .find("Aes256_Sha256_RsaPss") != std::string::npos)
+      {
+        endpoint->securityLevel = 20;
+      }
+      else
+      {
+        endpoint->securityLevel = 10;
+      }
     }
     else
     {
@@ -327,7 +447,7 @@ int main(int argc, char ** argv)
       .setValueRank(opcua::ValueRank::Scalar)
       .setValue(opcua::Variant{42}));
 
-  std::vector<float> currentPos{0.15, -1.25};
+  std::vector<float> currentPos{0.15f, -1.25f};
   opcua::Node currentPosNode = parentNode.addVariable(
     {1, 10}, "Current Position Array",
     opcua::VariableAttributes{}
@@ -389,6 +509,8 @@ int main(int argc, char ** argv)
   auto commandPosVal = commandPosNode.readValue().to<std::vector<bool>>();
   std::cout << "The commandPos is: [ " << commandPosVal.at(0) << " , " << commandPosVal.at(1)
             << " ]." << std::endl;
+
+  print_server_endpoints(server.config().handle(), node->get_logger());
 
   RCLCPP_INFO(node->get_logger(), "Server running. Press Ctrl+C to stop.");
 
