@@ -8,6 +8,7 @@
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "opcua_hardware_interface/opcua_hardware_interface.hpp"
+#include "opcua_hardware_interface/opcua_helpers.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 namespace opcua_hardware_interface
@@ -64,6 +65,10 @@ bool OPCUAHardwareInterface::configure_ua_client()
 
         // Set the OPC Server URL
         std::string endpoint_url = "opc.tcp://" + ip_address + ":" + port_number + "/";
+
+        // Find all servers
+        const auto servers = client.findServers(endpoint_url);
+        opcua_helpers::print_servers_info(servers, getLogger());
 
         if (!username.empty())
         {
