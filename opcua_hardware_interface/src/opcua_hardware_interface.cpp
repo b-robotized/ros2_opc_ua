@@ -1,4 +1,4 @@
-// Copyright (c) 2026, b-robotized
+// Copyright (c) 2026, b»robotized group
 // All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -255,8 +255,6 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
 
             CommandInterfaceUANode current_command_interface_ua_node;
 
-            // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and
-            // uint32_t
             [[maybe_unused]] auto [ptr1, ec1] =
                 std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(),
                                 current_command_interface_ua_node.ua_ns);
