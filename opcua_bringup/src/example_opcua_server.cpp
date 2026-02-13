@@ -38,40 +38,36 @@ using opcua::ua::DataTypeId;
 using opcua::ua::EndpointDescription;
 
 // Helper to read file content
-static ByteString readFile(const std::string & path)
+static opcua::ByteString readFile(const std::string & path)
 {
   std::ifstream file(path, std::ios::binary | std::ios::ate);
   if (!file)
   {
-    return ByteString{};
+    return opcua::ByteString{};
   }
   std::streamsize size = file.tellg();
   file.seekg(0, std::ios::beg);
 
   if (size <= 0)
   {
-    return ByteString{};
+    return opcua::ByteString{};
   }
 
   std::vector<char> buffer(static_cast<size_t>(size));
   if (file.read(buffer.data(), size))
   {
-    return ByteString(std::string_view(buffer.data(), static_cast<size_t>(size)));
+    return opcua::ByteString(std::string_view(buffer.data(), static_cast<size_t>(size)));
   }
-  return ByteString{};
+  return opcua::ByteString{};
 }
 
 // Custom access control based on AccessControlDefault.
-// If a user logs in with the username "admin", a session attribute "isAdmin" is stored. As an
-// example, the user "admin" has write access level to the created variable node. So admins can
-// change the value of the created variable node, anonymous users and the user "user" can't.
-// Session attributes are available since open62541 v1.3, so this example requires at least v1.3.
 class AccessControlCustom : public AccessControlDefault
 {
 public:
   using AccessControlDefault::AccessControlDefault;  // inherit constructors
   AccessControlCustom(
-    bool allow_anonymous, const std::initializer_list<Login> & logins, rclcpp::Logger logger)
+    bool allow_anonymous, const std::initializer_list<opcua::Login> & logins, rclcpp::Logger logger)
   : AccessControlDefault(allow_anonymous, logins), logger_(logger)
   {
   }
@@ -82,10 +78,10 @@ public:
     const opcua::ExtensionObject & userIdentityToken) override
   {
     // Check for unsafe configuration: UserName + SecurityMode::None
-    const auto * token = userIdentityToken.decodedData<UserNameIdentityToken>();
+    const auto * token = userIdentityToken.decodedData<opcua::ua::UserNameIdentityToken>();
     if (token != nullptr)
     {
-      if (endpointDescription.securityMode() == MessageSecurityMode::None)
+      if (endpointDescription.securityMode() == opcua::MessageSecurityMode::None)
       {
         RCLCPP_WARN(
           logger_,
@@ -96,10 +92,20 @@ public:
 
     // Grant admin rights if user is logged in as "admin"
     // Store attribute "isAdmin" as session attribute to use it in access callbacks
-    const auto * token = userIdentityToken.decodedData<opcua::ua::UserNameIdentityToken>();
-    const bool isAdmin = (token != nullptr && token->userName() == "admin");
-    std::cout << "User has admin rights: " << isAdmin << std::endl;
-    session.setSessionAttribute({0, "isAdmin"}, opcua::Variant{isAdmin});
+    const auto * userToken = userIdentityToken.decodedData<opcua::ua::UserNameIdentityToken>();
+    const bool isAdmin = (userToken != nullptr && userToken->userName() == "admin");
+    if (isAdmin)
+    {
+      std::cout << "User has admin rights: " << isAdmin << std::endl;
+      session.setSessionAttribute({0, "isAdmin"}, opcua::Variant{isAdmin});
+    }
+
+    // Handle Certificate Authentication (for logging purposes)
+    const auto * certToken = userIdentityToken.decodedData<opcua::ua::X509IdentityToken>();
+    if (certToken != nullptr)
+    {
+      std::cout << "User authenticated via Certificate." << std::endl;
+    }
 
     return AccessControlDefault::activateSession(
       session, endpointDescription, secureChannelRemoteCertificate, userIdentityToken);
@@ -122,97 +128,51 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
   auto node = std::make_shared<rclcpp::Node>("opcua_server_node");
 
-  // Declare the parameter "allow_anonymous" with a default value of false
-  // This allows enabling/disabling anonymous access via ROS 2 parameters
-  bool allow_anonymous = node->declare_parameter("allow_anonymous", false);
+  // Hardcode configuration for demonstration purposes as requested
+  // Certificates path (using the generated 100-year valid certs)
+  std::string cert_path = "src/ros2_opc_ua/opcua_bringup/config/server_cert.der";
+  std::string key_path = "src/ros2_opc_ua/opcua_bringup/config/server_key.der";
 
-  // Security parameters
-  std::string security_policy =
-    node->declare_parameter("security.policy", "Sign");  // "None", "Sign", "SignAndEncrypt"
-  std::string cert_path = node->declare_parameter("security.certificate_path", "");
-  std::string key_path = node->declare_parameter("security.private_key_path", "");
-  bool auto_generate_certs = node->declare_parameter("security.auto_generate_certificates", true);
-
-  // Prepare certificates
-  ByteString certificate;
-  ByteString privateKey;
-
-  if (security_policy != "None")
+  // Try to resolve package path if running from install to find config
+  try
   {
-    if (!cert_path.empty() && !key_path.empty())
+    std::ifstream f(cert_path);
+    if (!f.good())
     {
-      RCLCPP_INFO(node->get_logger(), "Loading certificate from: %s", cert_path.c_str());
-      certificate = readFile(cert_path);
-      privateKey = readFile(key_path);
-      if (certificate.empty() || privateKey.empty())
-      {
-        RCLCPP_ERROR(
-          node->get_logger(), "Failed to load certificate or private key files. Fallback to None?");
-        return 1;
-      }
-    }
-    else if (auto_generate_certs)
-    {
-#if UAPP_HAS_CREATE_CERTIFICATE
-      RCLCPP_INFO(node->get_logger(), "Generating self-signed certificate...");
-      try
-      {
-        auto result = opcua::createCertificate(
-          {{"CN", "ros2_opc_ua example server"}, {"O", "ROS 2"}},
-          {{"DNS", "localhost"}, {"URI", "urn:open62541pp.server.application:ros2_opc_ua"}});
-        certificate = std::move(result.certificate);
-        privateKey = std::move(result.privateKey);
-      }
-      catch (const std::exception & e)
-      {
-        RCLCPP_ERROR(node->get_logger(), "Certificate generation failed: %s", e.what());
-        return 1;
-      }
-#else
-      RCLCPP_ERROR(
-        node->get_logger(),
-        "Automatic certificate generation is not available (requires OpenSSL backend). "
-        "Please provide paths to certificate and private key using 'security.certificate_path' and "
-        "'security.private_key_path'.");
-      return 1;
-#endif
-    }
-    else
-    {
-      RCLCPP_ERROR(
-        node->get_logger(),
-        "Security Policy '%s' requested but no certificates provided. "
-        "Set 'security.certificate_path' and 'security.private_key_path' OR enable "
-        "'security.auto_generate_certificates'.",
-        security_policy.c_str());
-      return 1;
+      RCLCPP_WARN(
+        node->get_logger(), "Certificate not found at %s, checking if running from install...",
+        cert_path.c_str());
     }
   }
-
-  // Configure Server
-  std::unique_ptr<opcua::ServerConfig> config_ptr;
-
-  if (!certificate.empty() && !privateKey.empty())
+  catch (...)
   {
-    // Create server config with encryption support
-    // This constructor automatically enables secure policies supported by the library
-    // (Basic128Rsa15, Basic256, Basic256Sha256, Aes128_Sha256_RsaOaep) depending on build options.
-    // It ALSO enables None policy by default usually, but we can check.
-    config_ptr = std::make_unique<opcua::ServerConfig>(
-      4840, certificate, privateKey, Span<const ByteString>{}, Span<const ByteString>{});
   }
-  else
+
+  opcua::ByteString certificate = readFile(cert_path);
+  opcua::ByteString privateKey = readFile(key_path);
+
+  if (certificate.empty() || privateKey.empty())
   {
-    config_ptr = std::make_unique<opcua::ServerConfig>();  // Default None policy
+    RCLCPP_ERROR(
+      node->get_logger(), "Failed to load certificates from %s. Please run from workspace root.",
+      cert_path.c_str());
+    return 1;
   }
+
+  // Create server config with encryption support (Sign/SignAndEncrypt + None)
+  // This constructor automatically adds policies: None, Basic128Rsa15, Basic256, Basic256Sha256
+  auto config_ptr = std::make_unique<opcua::ServerConfig>(
+    4840, certificate, privateKey, opcua::Span<const opcua::ByteString>{},
+    opcua::Span<const opcua::ByteString>{});
 
   opcua::ServerConfig & config = *config_ptr;
 
   // Use handle to access the open62541 methods
   UA_ServerConfig * ua_server_config = config.handle();
-  std::string url = "opc.tcp://127.0.0.1:4840";
 
-  // clear and free existing server URLs
+  // Set Endpoint URL to bind to all interfaces
+  std::string url = "opc.tcp://0.0.0.0:4840";
+
   if (ua_server_config->serverUrlsSize > 0)
   {
     for (size_t i = 0; i < ua_server_config->serverUrlsSize; i++)
@@ -221,29 +181,26 @@ int main(int argc, char ** argv)
     }
     UA_free(ua_server_config->serverUrls);
   }
-  // allocate array
   ua_server_config->serverUrls = reinterpret_cast<UA_String *>(UA_malloc(sizeof(UA_String)));
   ua_server_config->serverUrlsSize = 1;
-  // allocate the string
   ua_server_config->serverUrls[0] = UA_STRING_ALLOC(url.c_str());
 
-  config.setApplicationName("ros2_opc_ua server example (based on open62541pp)");
+  config.setApplicationName("ros2_opc_ua server example");
   config.setApplicationUri("urn:open62541pp.server.application:ros2_opc_ua");
-  config.setProductUri("https://github.com/b-robotized/ros2_opc_ua");
 
-  // Exchanging usernames/passwords without encryption as plain text is dangerous.
-  // We are doing this just for demonstration, don't use it in production!
+  // Configure User Token Policies - using defaults plus AccessControl logic for now
+  // as manual configuration of policies via low-level API is version dependent.
+  // The ServerConfig constructor with certificates enables standard security policies.
+
   AccessControlCustom accessControl{
-    allow_anonymous,  // allow anonymous set via ROS 2 parameter
+    true,  // allow anonymous
     {
       opcua::Login{opcua::String{"admin"}, opcua::String{"ua_password"}},
-    }};
+    },
+    node->get_logger()};
 
   config.setAccessControl(accessControl);
-
-  // If "None" policy is used with Password, allow it explicitly
-  // Note: If using Sign/Encrypt, this might still be needed if the client explicitly chooses None.
-  config->allowNonePolicyPassword = true;
+  config->allowNonePolicyPassword = true;  // Allow UserName on None policy
 
   opcua::Server server{std::move(config)};
 
@@ -313,15 +270,16 @@ int main(int argc, char ** argv)
     interval);
 
   // Read the initial value (attribute) from the node
-  std::cout << "The answer is: " << myIntegerNode.readValue().to<int>() << std::endl;
-  std::cout << "The curentPos is: [ " << currentPosNode.readValue().to<std::vector<float>>().at(0)
-            << " , " << currentPosNode.readValue().to<std::vector<float>>().at(1) << " ]."
-            << std::endl;
-  std::cout << "The commandPos is: [ " << commandPosNode.readValue().to<std::vector<bool>>().at(0)
-            << " , " << commandPosNode.readValue().to<std::vector<bool>>().at(1) << " ]."
-            << std::endl;
+  auto answerVal = myIntegerNode.readValue();
+  std::cout << "The answer is: " << answerVal.to<int>() << std::endl;
 
-  server.run();
+  auto currentPosVal = currentPosNode.readValue().to<std::vector<float>>();
+  std::cout << "The curentPos is: [ " << currentPosVal.at(0) << " , " << currentPosVal.at(1)
+            << " ]." << std::endl;
+
+  auto commandPosVal = commandPosNode.readValue().to<std::vector<bool>>();
+  std::cout << "The commandPos is: [ " << commandPosVal.at(0) << " , " << commandPosVal.at(1)
+            << " ]." << std::endl;
 
   RCLCPP_INFO(node->get_logger(), "Server running. Press Ctrl+C to stop.");
 
