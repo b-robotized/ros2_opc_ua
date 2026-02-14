@@ -15,8 +15,10 @@
 
 #include <cmath>
 #include <fstream>  // for file checks
+#include <iomanip>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <vector>
 
 #include <open62541pp/client.hpp>
@@ -608,27 +610,47 @@ int main(int argc, char ** argv)
   std::cout << "The commandPos is: [ " << commandPosVal.at(0) << " , " << commandPosVal.at(1)
             << " ]." << std::endl;
 
-  // Print server configuration summary with certificate mapping
-  RCLCPP_INFO(node->get_logger(), "\n========== Server Configuration ==========");
-  RCLCPP_INFO(node->get_logger(), "Name: %s", APP_NAME);
-  RCLCPP_INFO(node->get_logger(), "URI: %s", APP_URI);
-  RCLCPP_INFO(node->get_logger(), "Listening on: %s", url.c_str());
-  RCLCPP_INFO(node->get_logger(), "\nCertificate Mapping (Security Policy -> Certificate Source):");
+  // Print server configuration with certificate mapping
+  std::stringstream config_ss;
+  config_ss << "\n========== Server Configuration ==========\n";
+  config_ss << "Name:             " << APP_NAME << "\n";
+  config_ss << "Application URI:  " << APP_URI << "\n";
+  config_ss << "Listening on:     " << url << "\n\n";
+
+  config_ss << "Certificate Mapping (Security Policy -> Certificate Source):\n";
   for (const auto & [policy, source] : certificateMapping)
   {
-    RCLCPP_INFO(node->get_logger(), "  %-45s -> %s", policy.c_str(), source.c_str());
+    config_ss << "  " << std::left << std::setw(50) << policy << " -> " << source << "\n";
   }
-  RCLCPP_INFO(node->get_logger(), "\nEndpoints: 7 total (sorted by security level)");
-  RCLCPP_INFO(node->get_logger(), "  [0] None              (level 0)");
-  RCLCPP_INFO(node->get_logger(), "  [1] Sign/Aes128       (level 10)");
-  RCLCPP_INFO(node->get_logger(), "  [2] Sign/Basic256Sha256 (level 20)");
-  RCLCPP_INFO(node->get_logger(), "  [3] Sign/Aes256       (level 20)");
-  RCLCPP_INFO(node->get_logger(), "  [4] SignEncrypt/Aes128 (level 110)");
-  RCLCPP_INFO(node->get_logger(), "  [5] SignEncrypt/Basic256Sha256 (level 120)");
-  RCLCPP_INFO(node->get_logger(), "  [6] SignEncrypt/Aes256 (level 120)");
-  RCLCPP_INFO(
-    node->get_logger(), "\nUser Token Policies: Anonymous + UserName (with standard PolicyIDs)");
-  RCLCPP_INFO(node->get_logger(), "==========================================\n");
+
+  config_ss << "\nEndpoints: 7 total (sorted by security level 0 -> 120)\n";
+  config_ss << "  [0] None / #None                        (level 0)   -> "
+            << certificateMapping["#None"] << "\n";
+  config_ss
+    << "  [1] Sign / #Aes128_Sha256_RsaOaep       (level 10)  -> "
+    << (certificateMapping.count("#Aes128_Sha256_RsaOaep")
+          ? certificateMapping["#Aes128_Sha256_RsaOaep"]
+          : certificateMapping["http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep"])
+    << "\n";
+  config_ss << "  [2] Sign / #Basic256Sha256              (level 20)  -> "
+            << certificateMapping["#Basic256Sha256"] << "\n";
+  config_ss << "  [3] Sign / #Aes256_Sha256_RsaPss        (level 20)  -> "
+            << certificateMapping["#Aes256_Sha256_RsaPss"] << "\n";
+  config_ss
+    << "  [4] SignEncrypt / #Aes128_Sha256_RsaOaep (level 110) -> "
+    << (certificateMapping.count("#Aes128_Sha256_RsaOaep")
+          ? certificateMapping["#Aes128_Sha256_RsaOaep"]
+          : certificateMapping["http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep"])
+    << "\n";
+  config_ss << "  [5] SignEncrypt / #Basic256Sha256       (level 120) -> "
+            << certificateMapping["#Basic256Sha256"] << "\n";
+  config_ss << "  [6] SignEncrypt / #Aes256_Sha256_RsaPss (level 120) -> "
+            << certificateMapping["#Aes256_Sha256_RsaPss"] << "\n\n";
+
+  config_ss << "User Token Policies: Anonymous + UserName (with standard PolicyIDs)\n";
+  config_ss << "==========================================\n";
+
+  RCLCPP_INFO_STREAM(node->get_logger(), config_ss.str());
   RCLCPP_INFO(node->get_logger(), "Server running. Press Ctrl+C to stop.");
 
   // Run the server loop manually to integrate with ROS 2 spin
