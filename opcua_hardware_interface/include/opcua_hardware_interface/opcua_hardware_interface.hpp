@@ -123,6 +123,14 @@ private:
   std::vector<opcua::ReadValueId>
     read_items;  // Contains the NodeIds corresponding to our state interfaces
   std::vector<opcua::ua::WriteValue> write_items;
+
+  // Client identification and security (set once during configure_ua_client)
+  std::string app_uri_;
+  std::string app_name_;
+  std::string endpoint_url_;
+  bool has_client_certificate_;
+  opcua::ByteString client_cert_;
+  opcua::ByteString client_key_;
 };
 
 }  // namespace opcua_hardware_interface

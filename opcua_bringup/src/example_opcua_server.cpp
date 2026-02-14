@@ -236,6 +236,8 @@ int main(int argc, char ** argv)
   // Declare parameters
   std::string cert_path = node->declare_parameter("security.certificate_path", "");
   std::string key_path = node->declare_parameter("security.private_key_path", "");
+  bool verify_client_certificates =
+    node->declare_parameter("security.verify_client_certificates", false);
 
   opcua::ByteString loadedCertificate;
   opcua::ByteString loadedPrivateKey;
@@ -319,9 +321,29 @@ int main(int argc, char ** argv)
   if (primaryCert && primaryKey && !primaryCert->empty() && !primaryKey->empty())
   {
     // Config with encryption
+    // Empty trust/revocation lists = accept all client certificates (unless
+    // verify_client_certificates is true)
     config_ptr = std::make_unique<opcua::ServerConfig>(
       4840, *primaryCert, *primaryKey, opcua::Span<const opcua::ByteString>{},
       opcua::Span<const opcua::ByteString>{});
+
+    if (!verify_client_certificates)
+    {
+      RCLCPP_WARN(
+        node->get_logger(),
+        "Server configured to ACCEPT ALL client certificates (empty trustlist). "
+        "This is INSECURE! Set 'security.verify_client_certificates:=true' to enable "
+        "verification.");
+    }
+    else
+    {
+      RCLCPP_INFO(
+        node->get_logger(),
+        "Client certificate verification would be ENABLED (not yet implemented).");
+      RCLCPP_WARN(
+        node->get_logger(),
+        "Note: Trustlist management not yet implemented, falling back to accept all.");
+    }
 
     // Record which policies use primary cert (default: all)
     certificateMapping["#None"] = primarySource;
@@ -403,6 +425,34 @@ int main(int argc, char ** argv)
 
   config.setApplicationName(APP_NAME);
   config.setApplicationUri(APP_URI);
+
+  // Disable client certificate verification if requested (default)
+  if (!verify_client_certificates)
+  {
+    // Override the certificate verification to accept all client certificates
+    // SecureChannel PKI verifies the client's certificate during channel establishment
+    ua_server_config->secureChannelPKI.clear = +[](UA_CertificateVerification *) {};
+    ua_server_config->secureChannelPKI.verifyCertificate =
+      +[](const UA_CertificateVerification *, const UA_ByteString *) -> UA_StatusCode
+    { return UA_STATUSCODE_GOOD; };
+
+    // Session PKI verifies user certificates (X509IdentityToken)
+    ua_server_config->sessionPKI.clear = +[](UA_CertificateVerification *) {};
+    ua_server_config->sessionPKI.verifyCertificate =
+      +[](const UA_CertificateVerification *, const UA_ByteString *) -> UA_StatusCode
+    { return UA_STATUSCODE_GOOD; };
+
+    RCLCPP_WARN(
+      node->get_logger(),
+      "Server client certificate verification DISABLED - accepting ALL client certificates. "
+      "This is INSECURE! Set 'security.verify_client_certificates:=true' to enable verification.");
+  }
+  else
+  {
+    RCLCPP_INFO(
+      node->get_logger(),
+      "Server client certificate verification ENABLED (using default trustlist).");
+  }
 
   // Configure User Token Policies - using defaults plus AccessControl logic for now
   // as manual configuration of policies via low-level API is version dependent.
@@ -610,6 +660,9 @@ int main(int argc, char ** argv)
   std::cout << "The commandPos is: [ " << commandPosVal.at(0) << " , " << commandPosVal.at(1)
             << " ]." << std::endl;
 
+  // Print detailed endpoint configuration
+  print_server_endpoints(UA_Server_getConfig(server.handle()), node->get_logger());
+
   // Print server configuration with certificate mapping
   std::stringstream config_ss;
   config_ss << "\n========== Server Configuration ==========\n";
@@ -648,6 +701,12 @@ int main(int argc, char ** argv)
             << certificateMapping["#Aes256_Sha256_RsaPss"] << "\n\n";
 
   config_ss << "User Token Policies: Anonymous + UserName (with standard PolicyIDs)\n";
+  config_ss << "Standard PolicyIDs generated per endpoint:\n";
+  config_ss << "  - UserName_None_Token (for #None endpoints)\n";
+  config_ss << "  - UserName_Aes128Sha256RsaOaep_Token (for #Aes128_Sha256_RsaOaep)\n";
+  config_ss << "  - UserName_Basic256Sha256_Token (for #Basic256Sha256)\n";
+  config_ss << "  - UserName_Aes256Sha256RsaPss_Token (for #Aes256_Sha256_RsaPss)\n";
+  config_ss << "  - Anonymous (varies per endpoint)\n";
   config_ss << "==========================================\n";
 
   RCLCPP_INFO_STREAM(node->get_logger(), config_ss.str());
