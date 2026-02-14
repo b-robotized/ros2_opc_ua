@@ -16,8 +16,10 @@
 #include <cmath>
 #include <fstream>  // for file checks
 #include <iostream>
+#include <map>
 #include <vector>
 
+#include <open62541pp/client.hpp>
 #include <open62541pp/node.hpp>
 #include <open62541pp/plugin/accesscontrol_default.hpp>
 #include <open62541pp/server.hpp>
@@ -233,8 +235,13 @@ int main(int argc, char ** argv)
   std::string cert_path = node->declare_parameter("security.certificate_path", "");
   std::string key_path = node->declare_parameter("security.private_key_path", "");
 
-  opcua::ByteString certificate;
-  opcua::ByteString privateKey;
+  opcua::ByteString loadedCertificate;
+  opcua::ByteString loadedPrivateKey;
+  opcua::ByteString generatedCertificate;
+  opcua::ByteString generatedPrivateKey;
+
+  // Storage to track which certificate is used for which policy
+  std::map<std::string, std::string> certificateMapping;
 
   // 1. Try to load from file if paths are provided
   if (!cert_path.empty() && !key_path.empty())
@@ -244,49 +251,81 @@ int main(int argc, char ** argv)
       std::ifstream f(cert_path);
       if (f.good())
       {
-        certificate = readFile(cert_path);
-        privateKey = readFile(key_path);
-        RCLCPP_INFO(node->get_logger(), "Loaded certificate from %s", cert_path.c_str());
+        loadedCertificate = readFile(cert_path);
+        loadedPrivateKey = readFile(key_path);
+        RCLCPP_INFO(
+          node->get_logger(), "Loaded certificate from %s (%zu bytes)", cert_path.c_str(),
+          loadedCertificate.length());
       }
       else
       {
-        RCLCPP_WARN(
-          node->get_logger(), "Certificate not found at %s. Will attempt generation.",
-          cert_path.c_str());
+        RCLCPP_WARN(node->get_logger(), "Certificate file not found at %s", cert_path.c_str());
       }
     }
     catch (...)
     {
-      RCLCPP_WARN(node->get_logger(), "Error reading certificate files. Will attempt generation.");
+      RCLCPP_WARN(node->get_logger(), "Error reading certificate files.");
     }
   }
 
-  // 2. If no certificate loaded yet, try to generate one
-  if (certificate.empty() || privateKey.empty())
+  // 2. Always generate self-signed certificate
+  RCLCPP_INFO(node->get_logger(), "Generating self-signed certificate...");
+  try
   {
-    RCLCPP_INFO(node->get_logger(), "Generating self-signed certificate...");
-    try
-    {
-      auto result = opcua::createCertificate(
-        {{"CN", APP_NAME}, {"O", "ROS 2"}}, {{"DNS", "localhost"}, {"URI", APP_URI}});
-      certificate = std::move(result.certificate);
-      privateKey = std::move(result.privateKey);
-    }
-    catch (const std::exception & e)
-    {
-      RCLCPP_ERROR(node->get_logger(), "Certificate generation failed: %s", e.what());
-    }
+    auto result = opcua::createCertificate(
+      {{"CN", APP_NAME}, {"O", "ROS 2"}}, {{"DNS", "localhost"}, {"URI", APP_URI}});
+    generatedCertificate = std::move(result.certificate);
+    generatedPrivateKey = std::move(result.privateKey);
+    RCLCPP_INFO(
+      node->get_logger(), "Generated certificate (%zu bytes)", generatedCertificate.length());
+  }
+  catch (const std::exception & e)
+  {
+    RCLCPP_ERROR(node->get_logger(), "Certificate generation failed: %s", e.what());
+  }
+
+  // 3. Select primary certificate (prefer loaded)
+  const opcua::ByteString * primaryCert = nullptr;
+  const opcua::ByteString * primaryKey = nullptr;
+  std::string primarySource;
+
+  if (!loadedCertificate.empty() && !loadedPrivateKey.empty())
+  {
+    primaryCert = &loadedCertificate;
+    primaryKey = &loadedPrivateKey;
+    primarySource = "LOADED";
+    RCLCPP_INFO(
+      node->get_logger(), "Using LOADED certificate as primary for stronger security policies.");
+  }
+  else if (!generatedCertificate.empty() && !generatedPrivateKey.empty())
+  {
+    primaryCert = &generatedCertificate;
+    primaryKey = &generatedPrivateKey;
+    primarySource = "GENERATED";
+    RCLCPP_INFO(node->get_logger(), "Using GENERATED certificate as primary.");
+  }
+  else
+  {
+    RCLCPP_ERROR(
+      node->get_logger(),
+      "No valid certificates available. Security policies will be limited to None.");
   }
 
   // Create server config
   std::unique_ptr<opcua::ServerConfig> config_ptr;
 
-  if (!certificate.empty() && !privateKey.empty())
+  if (primaryCert && primaryKey && !primaryCert->empty() && !primaryKey->empty())
   {
     // Config with encryption
     config_ptr = std::make_unique<opcua::ServerConfig>(
-      4840, certificate, privateKey, opcua::Span<const opcua::ByteString>{},
+      4840, *primaryCert, *primaryKey, opcua::Span<const opcua::ByteString>{},
       opcua::Span<const opcua::ByteString>{});
+
+    // Record which policies use primary cert (default: all)
+    certificateMapping["#None"] = primarySource;
+    certificateMapping["#Basic256Sha256"] = primarySource;
+    certificateMapping["#Aes256_Sha256_RsaPss"] = primarySource;
+    certificateMapping["#Aes128_Sha256_RsaOaep"] = primarySource;
   }
   else
   {
@@ -295,12 +334,55 @@ int main(int argc, char ** argv)
       node->get_logger(),
       "Starting server without certificates. Only 'None' security policy will be available.");
     config_ptr = std::make_unique<opcua::ServerConfig>();
+    certificateMapping["#None"] = "NONE";
   }
 
   opcua::ServerConfig & config = *config_ptr;
 
   // Use handle to access the open62541 methods
   UA_ServerConfig * ua_server_config = config.handle();
+
+  // OVERRIDE: If BOTH certificates are available, use GENERATED for weaker policies
+  if (
+    !loadedCertificate.empty() && !loadedPrivateKey.empty() && !generatedCertificate.empty() &&
+    !generatedPrivateKey.empty())
+  {
+    RCLCPP_INFO(node->get_logger(), "Both certificates available. Splitting policies...");
+    RCLCPP_INFO(
+      node->get_logger(), "  - Weaker policies (Basic128Rsa15, Aes128...): GENERATED cert");
+    RCLCPP_INFO(
+      node->get_logger(), "  - Stronger policies (Basic256Sha256, Aes256...): LOADED cert");
+
+    // Iterate security policies and swap certificate for weaker ones
+    for (size_t i = 0; i < ua_server_config->securityPoliciesSize; ++i)
+    {
+      UA_SecurityPolicy * policy = &ua_server_config->securityPolicies[i];
+      std::string uri(reinterpret_cast<char *>(policy->policyUri.data), policy->policyUri.length);
+
+      if (
+        uri.find("Basic128Rsa15") != std::string::npos ||
+        uri.find("Aes128_Sha256_RsaOaep") != std::string::npos)
+      {
+        if (policy->updateCertificateAndPrivateKey)
+        {
+          UA_StatusCode retval = policy->updateCertificateAndPrivateKey(
+            policy, *generatedCertificate.handle(), *generatedPrivateKey.handle());
+          if (retval == UA_STATUSCODE_GOOD)
+          {
+            certificateMapping[uri] = "GENERATED";
+            RCLCPP_INFO(
+              node->get_logger(), "  ✓ Updated '%s' to use GENERATED certificate", uri.c_str());
+          }
+          else
+          {
+            RCLCPP_ERROR(
+              node->get_logger(), "  ✗ Failed to update certificate for '%s': %s", uri.c_str(),
+              UA_StatusCode_name(retval));
+          }
+        }
+      }
+    }
+  }
 
   // Set Endpoint URL to bind to all interfaces
   std::string url = "opc.tcp://127.0.0.1:4840";
@@ -526,8 +608,27 @@ int main(int argc, char ** argv)
   std::cout << "The commandPos is: [ " << commandPosVal.at(0) << " , " << commandPosVal.at(1)
             << " ]." << std::endl;
 
-  print_server_endpoints(server.config().handle(), node->get_logger());
-
+  // Print server configuration summary with certificate mapping
+  RCLCPP_INFO(node->get_logger(), "\n========== Server Configuration ==========");
+  RCLCPP_INFO(node->get_logger(), "Name: %s", APP_NAME);
+  RCLCPP_INFO(node->get_logger(), "URI: %s", APP_URI);
+  RCLCPP_INFO(node->get_logger(), "Listening on: %s", url.c_str());
+  RCLCPP_INFO(node->get_logger(), "\nCertificate Mapping (Security Policy -> Certificate Source):");
+  for (const auto & [policy, source] : certificateMapping)
+  {
+    RCLCPP_INFO(node->get_logger(), "  %-45s -> %s", policy.c_str(), source.c_str());
+  }
+  RCLCPP_INFO(node->get_logger(), "\nEndpoints: 7 total (sorted by security level)");
+  RCLCPP_INFO(node->get_logger(), "  [0] None              (level 0)");
+  RCLCPP_INFO(node->get_logger(), "  [1] Sign/Aes128       (level 10)");
+  RCLCPP_INFO(node->get_logger(), "  [2] Sign/Basic256Sha256 (level 20)");
+  RCLCPP_INFO(node->get_logger(), "  [3] Sign/Aes256       (level 20)");
+  RCLCPP_INFO(node->get_logger(), "  [4] SignEncrypt/Aes128 (level 110)");
+  RCLCPP_INFO(node->get_logger(), "  [5] SignEncrypt/Basic256Sha256 (level 120)");
+  RCLCPP_INFO(node->get_logger(), "  [6] SignEncrypt/Aes256 (level 120)");
+  RCLCPP_INFO(
+    node->get_logger(), "\nUser Token Policies: Anonymous + UserName (with standard PolicyIDs)");
+  RCLCPP_INFO(node->get_logger(), "==========================================\n");
   RCLCPP_INFO(node->get_logger(), "Server running. Press Ctrl+C to stop.");
 
   // Run the server loop manually to integrate with ROS 2 spin
