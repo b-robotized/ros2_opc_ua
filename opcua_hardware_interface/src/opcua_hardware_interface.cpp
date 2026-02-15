@@ -95,6 +95,8 @@ bool OPCUAHardwareInterface::configure_ua_client()
       params.count("security.certificate_path") ? params.at("security.certificate_path") : "";
     std::string key_path =
       params.count("security.private_key_path") ? params.at("security.private_key_path") : "";
+    std::string ca_cert_path =
+      params.count("security.ca_certificate_path") ? params.at("security.ca_certificate_path") : "";
     bool verify_certificates = params.count("security.verify_certificates")
                                  ? (params.at("security.verify_certificates") == "true")
                                  : false;
@@ -158,6 +160,21 @@ bool OPCUAHardwareInterface::configure_ua_client()
         }
       }
 
+      // Try loading CA certificate for server verification
+      if (!ca_cert_path.empty())
+      {
+        ca_cert_ = readFile(ca_cert_path);
+        if (!ca_cert_.empty())
+        {
+          RCLCPP_INFO(getLogger(), "Loaded CA certificate from %s (%zu bytes)", ca_cert_path.c_str(), ca_cert_.length());
+        }
+        else
+        {
+          RCLCPP_WARN(
+            getLogger(), "Failed to read CA certificate file from %s", ca_cert_path.c_str());
+        }
+      }
+
       // If no certificate loaded, generate one
       if (client_cert_.empty() || client_key_.empty())
       {
@@ -187,8 +204,20 @@ bool OPCUAHardwareInterface::configure_ua_client()
       // Set encryption if we have a certificate
       if (!client_cert_.empty() && !client_key_.empty())
       {
+        // Prepare trustList and revocationList for UA_ClientConfig_setDefaultEncryption
+        const UA_ByteString * trustList = nullptr;
+        size_t trustListSize = 0;
+        
+        if (!ca_cert_.empty())
+        {
+          trustList = ca_cert_.handle();
+          trustListSize = 1;
+          RCLCPP_INFO(getLogger(), "Using CA certificate for server verification (trustList)");
+        }
+
         UA_StatusCode retval = UA_ClientConfig_setDefaultEncryption(
-          client.config().handle(), *client_cert_.handle(), *client_key_.handle(), nullptr, 0,
+          client.config().handle(), *client_cert_.handle(), *client_key_.handle(), 
+          trustList, trustListSize,
           nullptr, 0);
 
         if (retval != UA_STATUSCODE_GOOD)
@@ -201,23 +230,50 @@ bool OPCUAHardwareInterface::configure_ua_client()
           has_client_certificate_ = true;
           RCLCPP_INFO(getLogger(), "Client encryption configured successfully!");
 
-          // Configure certificate verification based on parameter
-          if (!verify_certificates)
+          // Configure certificate verification based on CA availability and parameter
+          if (!ca_cert_.empty())
           {
-            // Disable certificate verification for testing (trust all certificates)
-            client.config()->certificateVerification.clear = +[](UA_CertificateVerification *) {};
-            client.config()->certificateVerification.verifyCertificate =
-              +[](const UA_CertificateVerification *, const UA_ByteString *) -> UA_StatusCode
-            { return UA_STATUSCODE_GOOD; };
+            // CA certificate is provided, enable verification by default
+            if (verify_certificates)
+            {
+              RCLCPP_INFO(getLogger(), "Certificate verification ENABLED with CA trustlist.");
+            }
+            else
+            {
+              // User explicitly disabled verification even with CA
+              client.config()->certificateVerification.clear = +[](UA_CertificateVerification *) {};
+              client.config()->certificateVerification.verifyCertificate =
+                +[](const UA_CertificateVerification *, const UA_ByteString *) -> UA_StatusCode
+              { return UA_STATUSCODE_GOOD; };
 
-            RCLCPP_WARN(
-              getLogger(),
-              "Certificate verification DISABLED (trust all). This is INSECURE and should only be "
-              "used for testing!");
+              RCLCPP_WARN(
+                getLogger(),
+                "Certificate verification DISABLED by parameter (trust all). This is INSECURE!");
+            }
           }
           else
           {
-            RCLCPP_INFO(getLogger(), "Certificate verification ENABLED.");
+            // No CA certificate provided
+            if (!verify_certificates)
+            {
+              // Disable certificate verification for testing (trust all certificates)
+              client.config()->certificateVerification.clear = +[](UA_CertificateVerification *) {};
+              client.config()->certificateVerification.verifyCertificate =
+                +[](const UA_CertificateVerification *, const UA_ByteString *) -> UA_StatusCode
+              { return UA_STATUSCODE_GOOD; };
+
+              RCLCPP_WARN(
+                getLogger(),
+                "Certificate verification DISABLED (no CA, trust all). This is INSECURE and should only be "
+                "used for testing!");
+            }
+            else
+            {
+              RCLCPP_WARN(
+                getLogger(),
+                "Certificate verification requested but NO CA certificate provided. "
+                "Server certificate will be validated using default truststore (may fail).");
+            }
           }
         }
       }

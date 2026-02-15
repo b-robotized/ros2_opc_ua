@@ -131,6 +131,7 @@ private:
   bool has_client_certificate_;
   opcua::ByteString client_cert_;
   opcua::ByteString client_key_;
+  opcua::ByteString ca_cert_;
 };
 
 }  // namespace opcua_hardware_interface

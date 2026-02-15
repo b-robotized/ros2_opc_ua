@@ -4,8 +4,9 @@
   <arg name="mock_sensor_commands" default="false"/>
   <arg name="client_cert_path" default="$(find-pkg-share opcua_bringup)/config/pki/client_cert.der" description="Path to client certificate"/>
   <arg name="client_key_path" default="$(find-pkg-share opcua_bringup)/config/pki/client_key.der" description="Path to client private key"/>
+  <arg name="ca_cert_path" default="$(find-pkg-share opcua_bringup)/config/pki/ca_cert.der" description="Path to CA certificate for server verification"/>
 
-  <let name="robot_description_content" value="$(command '$(find-exec xacro) $(find-pkg-share opcua_bringup)/urdf/opcua.urdf.xacro mock_hardware:=$(var mock_hardware) mock_sensor_commands:=$(var mock_sensor_commands) client_cert_path:=$(var client_cert_path) client_key_path:=$(var client_key_path)')"/>
+  <let name="robot_description_content" value="$(command '$(find-exec xacro) $(find-pkg-share opcua_bringup)/urdf/opcua.urdf.xacro mock_hardware:=$(var mock_hardware) mock_sensor_commands:=$(var mock_sensor_commands) client_cert_path:=$(var client_cert_path) client_key_path:=$(var client_key_path) ca_cert_path:=$(var ca_cert_path)')"/>
 
   <!--robot_state_pub_node-->
   <node pkg="robot_state_publisher" exec="robot_state_publisher" output="both">
