@@ -1,0 +1,9 @@
+<launch>
+  <arg name="certificate_path" default="$(find-pkg-share opcua_bringup)/config/server_cert.der" description="Path to the server certificate (DER format)"/>
+  <arg name="private_key_path" default="$(find-pkg-share opcua_bringup)/config/server_key.der" description="Path to the server private key (DER format)"/>
+
+  <node pkg="opcua_bringup" exec="example_opcua_server" name="opcua_server" output="screen">
+    <param name="security.certificate_path" value="$(var certificate_path)"/>
+    <param name="security.private_key_path" value="$(var private_key_path)"/>
+  </node>
+</launch>

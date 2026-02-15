@@ -1,0 +1,12 @@
+<launch>
+  <!-- Server with CA-based client certificate verification -->
+  <arg name="certificate_path" default="$(find-pkg-share opcua_bringup)/config/pki/server_cert.der" description="Path to the server certificate (DER format)"/>
+  <arg name="private_key_path" default="$(find-pkg-share opcua_bringup)/config/pki/server_key.der" description="Path to the server private key (DER format)"/>
+  <arg name="ca_certificate_path" default="$(find-pkg-share opcua_bringup)/config/pki/ca_cert.der" description="Path to the CA certificate for client verification (auto-enables verification)"/>
+
+  <node pkg="opcua_bringup" exec="example_opcua_server" name="opcua_server" output="screen">
+    <param name="security.certificate_path" value="$(var certificate_path)"/>
+    <param name="security.private_key_path" value="$(var private_key_path)"/>
+    <param name="security.ca_certificate_path" value="$(var ca_certificate_path)"/>
+  </node>
+</launch>

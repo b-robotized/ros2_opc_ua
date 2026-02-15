@@ -6,7 +6,10 @@
     <xacro:macro name="opcua_ros2_control" params="
                 name
                 mock_hardware:=false
-                mock_sensor_commands:=false">
+                mock_sensor_commands:=false
+                client_cert_path:=''
+                client_key_path:=''
+                ca_cert_path:=''">
 
         <ros2_control name="${name}" type="system">
             <hardware>
@@ -20,6 +23,15 @@
                     <param name="port">4840</param>
                     <param name="user">admin</param>
                     <param name="password">ua_password</param>
+                    <xacro:if value="${client_cert_path != ''}">
+                        <param name="security.certificate_path">${client_cert_path}</param>
+                    </xacro:if>
+                    <xacro:if value="${client_key_path != ''}">
+                        <param name="security.private_key_path">${client_key_path}</param>
+                    </xacro:if>
+                    <xacro:if value="${ca_cert_path != ''}">
+                        <param name="security.ca_certificate_path">${ca_cert_path}</param>
+                    </xacro:if>
                 </xacro:unless>
             </hardware>
 

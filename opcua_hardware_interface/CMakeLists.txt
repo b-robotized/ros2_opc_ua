@@ -16,6 +16,7 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(open62541pp_vendor REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 add_library(
   opcua_hardware_interface
@@ -34,6 +35,8 @@ target_link_libraries(opcua_hardware_interface PUBLIC
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
   open62541pp::open62541pp
+  OpenSSL::SSL
+  OpenSSL::Crypto
 )
 
 # prevent pluginlib from using boost

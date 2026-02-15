@@ -5,6 +5,9 @@
 
   <xacro:arg name="mock_hardware" default="false"/>
   <xacro:arg name="mock_sensor_commands" default="false"/>
+  <xacro:arg name="client_cert_path" default=""/>
+  <xacro:arg name="client_key_path" default=""/>
+  <xacro:arg name="ca_cert_path" default=""/>
 
   <xacro:include filename="$(find opcua_bringup)/urdf/control/opcua_macro.ros2_control.xacro"/>
 
@@ -14,6 +17,9 @@
   <xacro:opcua_ros2_control
     name="opcua_bot"
     mock_hardware="$(arg mock_hardware)"
-    mock_sensor_commands="$(arg mock_sensor_commands)"/>
+    mock_sensor_commands="$(arg mock_sensor_commands)"
+    client_cert_path="$(arg client_cert_path)"
+    client_key_path="$(arg client_key_path)"
+    ca_cert_path="$(arg ca_cert_path)"/>
 
 </robot>
