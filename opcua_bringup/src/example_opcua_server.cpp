@@ -21,16 +21,19 @@
 #include <sstream>
 #include <vector>
 
-#include <open62541pp/client.hpp>
-#include <open62541pp/node.hpp>
-#include <open62541pp/plugin/accesscontrol_default.hpp>
-#include <open62541pp/server.hpp>
-#include <open62541pp/types.hpp>
-#include "open62541pp/callback.hpp"
+// OpenSSL includes for certificate parsing
+#include "openssl/bio.h"
+#include "openssl/err.h"
+#include "openssl/x509.h"
 
-// Include create_certificate if available, otherwise we will use external files
-#include <open62541pp/config.hpp>
-#include <open62541pp/plugin/create_certificate.hpp>
+#include "open62541pp/callback.hpp"
+#include "open62541pp/client.hpp"
+#include "open62541pp/config.hpp"
+#include "open62541pp/node.hpp"
+#include "open62541pp/plugin/accesscontrol_default.hpp"
+#include "open62541pp/plugin/create_certificate.hpp"
+#include "open62541pp/server.hpp"
+#include "open62541pp/types.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -42,6 +45,149 @@ using opcua::ua::EndpointDescription;
 // Constants
 static const char * APP_NAME = "ros2_opc_ua server example";
 static const char * APP_URI = "urn:open62541pp.server.application:ros2_opc_ua";
+
+// Helper structure to hold certificate information
+struct CertificateInfo
+{
+  std::string common_name;
+  std::string organization;
+  std::string organizational_unit;
+  std::string country;
+  std::string state;
+  std::string locality;
+  std::string not_before;
+  std::string not_after;
+  std::string issuer_cn;
+  std::string issuer_org;
+  bool is_valid = false;
+};
+
+// Parse X.509 certificate from DER format
+static CertificateInfo parseCertificate(const opcua::ByteString & cert_data)
+{
+  CertificateInfo info;
+
+  if (cert_data.empty())
+  {
+    return info;
+  }
+
+  // Create BIO from certificate data
+  BIO * bio = BIO_new_mem_buf(cert_data.data(), static_cast<int>(cert_data.length()));
+  if (!bio)
+  {
+    return info;
+  }
+
+  // Parse DER format certificate
+  X509 * cert = d2i_X509_bio(bio, nullptr);
+  BIO_free(bio);
+
+  if (!cert)
+  {
+    return info;
+  }
+
+  info.is_valid = true;
+
+  // Extract subject information
+  X509_NAME * subject = X509_get_subject_name(cert);
+  if (subject)
+  {
+    char buffer[256];
+
+    // Common Name (CN)
+    if (X509_NAME_get_text_by_NID(subject, NID_commonName, buffer, sizeof(buffer)) > 0)
+    {
+      info.common_name = buffer;
+    }
+
+    // Organization (O)
+    if (X509_NAME_get_text_by_NID(subject, NID_organizationName, buffer, sizeof(buffer)) > 0)
+    {
+      info.organization = buffer;
+    }
+
+    // Organizational Unit (OU)
+    if (X509_NAME_get_text_by_NID(subject, NID_organizationalUnitName, buffer, sizeof(buffer)) > 0)
+    {
+      info.organizational_unit = buffer;
+    }
+
+    // Country (C)
+    if (X509_NAME_get_text_by_NID(subject, NID_countryName, buffer, sizeof(buffer)) > 0)
+    {
+      info.country = buffer;
+    }
+
+    // State (ST)
+    if (X509_NAME_get_text_by_NID(subject, NID_stateOrProvinceName, buffer, sizeof(buffer)) > 0)
+    {
+      info.state = buffer;
+    }
+
+    // Locality (L)
+    if (X509_NAME_get_text_by_NID(subject, NID_localityName, buffer, sizeof(buffer)) > 0)
+    {
+      info.locality = buffer;
+    }
+  }
+
+  // Extract issuer information
+  X509_NAME * issuer = X509_get_issuer_name(cert);
+  if (issuer)
+  {
+    char buffer[256];
+
+    // Issuer Common Name
+    if (X509_NAME_get_text_by_NID(issuer, NID_commonName, buffer, sizeof(buffer)) > 0)
+    {
+      info.issuer_cn = buffer;
+    }
+
+    // Issuer Organization
+    if (X509_NAME_get_text_by_NID(issuer, NID_organizationName, buffer, sizeof(buffer)) > 0)
+    {
+      info.issuer_org = buffer;
+    }
+  }
+
+  // Extract validity period
+  const ASN1_TIME * not_before = X509_get0_notBefore(cert);
+  const ASN1_TIME * not_after = X509_get0_notAfter(cert);
+
+  if (not_before)
+  {
+    BIO * bio_nb = BIO_new(BIO_s_mem());
+    ASN1_TIME_print(bio_nb, not_before);
+    char nb_buffer[128];
+    int nb_len = BIO_read(bio_nb, nb_buffer, sizeof(nb_buffer) - 1);
+    if (nb_len > 0)
+    {
+      nb_buffer[nb_len] = '\0';
+      info.not_before = nb_buffer;
+    }
+    BIO_free(bio_nb);
+  }
+
+  if (not_after)
+  {
+    BIO * bio_na = BIO_new(BIO_s_mem());
+    ASN1_TIME_print(bio_na, not_after);
+    char na_buffer[128];
+    int na_len = BIO_read(bio_na, na_buffer, sizeof(na_buffer) - 1);
+    if (na_len > 0)
+    {
+      na_buffer[na_len] = '\0';
+      info.not_after = na_buffer;
+    }
+    BIO_free(bio_na);
+  }
+
+  X509_free(cert);
+
+  return info;
+}
 
 // Helper to read file content
 static opcua::ByteString readFile(const std::string & path)
@@ -691,6 +837,58 @@ int main(int argc, char ** argv)
   config_ss << "Name:             " << APP_NAME << "\n";
   config_ss << "Application URI:  " << APP_URI << "\n";
   config_ss << "Listening on:     " << url << "\n\n";
+
+  // CA Certificate Status
+  config_ss << "Client Certificate Verification:\n";
+  if (!caCertificate.empty())
+  {
+    config_ss << "  ✓ ENABLED - Using CA certificate (" << caCertificate.length() << " bytes)\n";
+
+    // Parse and display CA certificate information
+    CertificateInfo ca_info = parseCertificate(caCertificate);
+    if (ca_info.is_valid)
+    {
+      config_ss << "  CA Certificate Details:\n";
+      if (!ca_info.common_name.empty())
+      {
+        config_ss << "    - CN:           " << ca_info.common_name << "\n";
+      }
+      if (!ca_info.organization.empty())
+      {
+        config_ss << "    - Organization: " << ca_info.organization << "\n";
+      }
+      if (!ca_info.organizational_unit.empty())
+      {
+        config_ss << "    - Org Unit:     " << ca_info.organizational_unit << "\n";
+      }
+      if (!ca_info.country.empty())
+      {
+        config_ss << "    - Country:      " << ca_info.country << "\n";
+      }
+      if (!ca_info.state.empty())
+      {
+        config_ss << "    - State:        " << ca_info.state << "\n";
+      }
+      if (!ca_info.locality.empty())
+      {
+        config_ss << "    - Locality:     " << ca_info.locality << "\n";
+      }
+      if (!ca_info.not_before.empty() && !ca_info.not_after.empty())
+      {
+        config_ss << "    - Valid From:   " << ca_info.not_before << "\n";
+        config_ss << "    - Valid Until:  " << ca_info.not_after << "\n";
+      }
+    }
+
+    config_ss << "  ✓ Only clients with certificates signed by the CA will be accepted\n";
+  }
+  else
+  {
+    config_ss << "  ✗ DISABLED - No CA certificate provided\n";
+    config_ss
+      << "  ⚠ INSECURE: Accepting ALL client certificates (not recommended for production)\n";
+  }
+  config_ss << "\n";
 
   config_ss << "Certificate Mapping (Security Policy -> Certificate Source):\n";
   for (const auto & [policy, source] : certificateMapping)

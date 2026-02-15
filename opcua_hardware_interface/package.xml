@@ -12,6 +12,7 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>hardware_interface</depend>
+  <depend>libssl-dev</depend>
   <depend>pluginlib</depend>
   <depend>yaml_cpp_vendor</depend>
   <depend>open62541pp_vendor</depend>

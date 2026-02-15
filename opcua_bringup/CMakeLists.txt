@@ -13,13 +13,19 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(open62541pp_vendor REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(OpenSSL REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
 add_executable(example_opcua_server src/example_opcua_server.cpp)
 
-target_link_libraries(example_opcua_server open62541pp::open62541pp rclcpp::rclcpp)
+target_link_libraries(example_opcua_server
+  open62541pp::open62541pp
+  rclcpp::rclcpp
+  OpenSSL::SSL
+  OpenSSL::Crypto
+)
 install(TARGETS
   example_opcua_server
   DESTINATION lib/${PROJECT_NAME}

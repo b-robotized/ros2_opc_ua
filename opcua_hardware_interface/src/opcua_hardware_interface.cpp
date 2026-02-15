@@ -166,7 +166,9 @@ bool OPCUAHardwareInterface::configure_ua_client()
         ca_cert_ = readFile(ca_cert_path);
         if (!ca_cert_.empty())
         {
-          RCLCPP_INFO(getLogger(), "Loaded CA certificate from %s (%zu bytes)", ca_cert_path.c_str(), ca_cert_.length());
+          RCLCPP_INFO(
+            getLogger(), "Loaded CA certificate from %s (%zu bytes)", ca_cert_path.c_str(),
+            ca_cert_.length());
         }
         else
         {
@@ -207,7 +209,7 @@ bool OPCUAHardwareInterface::configure_ua_client()
         // Prepare trustList and revocationList for UA_ClientConfig_setDefaultEncryption
         const UA_ByteString * trustList = nullptr;
         size_t trustListSize = 0;
-        
+
         if (!ca_cert_.empty())
         {
           trustList = ca_cert_.handle();
@@ -216,9 +218,8 @@ bool OPCUAHardwareInterface::configure_ua_client()
         }
 
         UA_StatusCode retval = UA_ClientConfig_setDefaultEncryption(
-          client.config().handle(), *client_cert_.handle(), *client_key_.handle(), 
-          trustList, trustListSize,
-          nullptr, 0);
+          client.config().handle(), *client_cert_.handle(), *client_key_.handle(), trustList,
+          trustListSize, nullptr, 0);
 
         if (retval != UA_STATUSCODE_GOOD)
         {
@@ -264,7 +265,8 @@ bool OPCUAHardwareInterface::configure_ua_client()
 
               RCLCPP_WARN(
                 getLogger(),
-                "Certificate verification DISABLED (no CA, trust all). This is INSECURE and should only be "
+                "Certificate verification DISABLED (no CA, trust all). This is INSECURE and should "
+                "only be "
                 "used for testing!");
             }
             else
@@ -350,19 +352,6 @@ bool OPCUAHardwareInterface::configure_ua_client()
       return false;
     }
 
-    auto to_std_string = [](const opcua::String & s)
-    { return std::string(reinterpret_cast<char *>(s->data), s->length); };
-
-    RCLCPP_INFO(
-      getLogger(), "Selected Endpoint: %s",
-      to_std_string(selectedEndpoint->securityPolicyUri()).c_str());
-    RCLCPP_INFO(
-      getLogger(), "Selected Security Mode: %s",
-      opcua_helpers::toString(selectedEndpoint->securityMode()).c_str());
-    RCLCPP_INFO(
-      getLogger(), "Selected User Token Policy: %s",
-      to_std_string(selectedTokenPolicy->policyId()).c_str());
-
     // Configure Client
     client.config()->securityMode =
       static_cast<UA_MessageSecurityMode>(selectedEndpoint->securityMode());
@@ -421,8 +410,10 @@ bool OPCUAHardwareInterface::configure_ua_client()
         &UA_TYPES[UA_TYPES_ANONYMOUSIDENTITYTOKEN]);
     }
 
-    // Print Client Configuration
-    opcua_helpers::print_client_info(client, getLogger());
+    // Print Client Configuration with security details
+    opcua_helpers::print_client_info(
+      client, getLogger(), client_cert_, client_key_, ca_cert_, verify_certificates,
+      selectedEndpoint->securityLevel());
 
     // Connect to the server using the credentials from the URDF
     RCLCPP_INFO(getLogger(), "\tConnection to the Endpoint URL: %s...", endpoint_url_.c_str());
