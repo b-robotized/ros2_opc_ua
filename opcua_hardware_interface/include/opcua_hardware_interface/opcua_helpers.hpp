@@ -284,7 +284,7 @@ void print_client_info(
   const opcua::Client & client, const rclcpp::Logger & logger,
   const opcua::ByteString & client_cert = opcua::ByteString(),
   const opcua::ByteString & client_key = opcua::ByteString(),
-  const opcua::ByteString & ca_cert = opcua::ByteString(), bool verify_certificates = false,
+  const opcua::ByteString & ca_cert = opcua::ByteString(),
   uint8_t selected_endpoint_security_level = 0)
 {
   std::stringstream ss;
@@ -364,26 +364,13 @@ void print_client_info(
     }
 
     ss << "  ✓ Server certificate will be validated against CA trustlist\n";
-    if (verify_certificates)
-    {
-      ss << "  ✓ Certificate verification: STRICT\n";
-    }
-    else
-    {
-      ss << "  ⚠ Certificate verification: DISABLED by parameter (INSECURE)\n";
-    }
+    ss << "  ✓ Certificate verification: ENABLED\n";
   }
   else
   {
     ss << "  ✗ DISABLED - No CA certificate provided\n";
-    if (!verify_certificates)
-    {
-      ss << "  ⚠ INSECURE: Trusting ALL server certificates (not recommended for production)\n";
-    }
-    else
-    {
-      ss << "  ⚠ Using default truststore (connection may fail)\n";
-    }
+    ss << "  ⚠ INSECURE: Trusting ALL server certificates (not recommended for production)\n";
+    ss << "  ⚠ Provide 'security.ca_certificate_path' parameter to enable verification\n";
   }
 
   // Server CA Detection (check if server requires client certificate verification)

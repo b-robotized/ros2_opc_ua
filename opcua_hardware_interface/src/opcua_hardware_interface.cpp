@@ -97,9 +97,6 @@ bool OPCUAHardwareInterface::configure_ua_client()
       params.count("security.private_key_path") ? params.at("security.private_key_path") : "";
     std::string ca_cert_path =
       params.count("security.ca_certificate_path") ? params.at("security.ca_certificate_path") : "";
-    bool verify_certificates = params.count("security.verify_certificates")
-                                 ? (params.at("security.verify_certificates") == "true")
-                                 : false;
 
     // Set Application URI and Name once (used throughout)
     app_uri_ = "urn:ros2_opc_ua.client.hw_itf:" + info_.name;
@@ -231,51 +228,25 @@ bool OPCUAHardwareInterface::configure_ua_client()
           has_client_certificate_ = true;
           RCLCPP_INFO(getLogger(), "Client encryption configured successfully!");
 
-          // Configure certificate verification based on CA availability and parameter
+          // Configure certificate verification based on CA availability
           if (!ca_cert_.empty())
           {
-            // CA certificate is provided, enable verification by default
-            if (verify_certificates)
-            {
-              RCLCPP_INFO(getLogger(), "Certificate verification ENABLED with CA trustlist.");
-            }
-            else
-            {
-              // User explicitly disabled verification even with CA
-              client.config()->certificateVerification.clear = +[](UA_CertificateVerification *) {};
-              client.config()->certificateVerification.verifyCertificate =
-                +[](const UA_CertificateVerification *, const UA_ByteString *) -> UA_StatusCode
-              { return UA_STATUSCODE_GOOD; };
-
-              RCLCPP_WARN(
-                getLogger(),
-                "Certificate verification DISABLED by parameter (trust all). This is INSECURE!");
-            }
+            // CA certificate is provided, always enable verification
+            RCLCPP_INFO(getLogger(), "Certificate verification ENABLED with CA trustlist.");
           }
           else
           {
-            // No CA certificate provided
-            if (!verify_certificates)
-            {
-              // Disable certificate verification for testing (trust all certificates)
-              client.config()->certificateVerification.clear = +[](UA_CertificateVerification *) {};
-              client.config()->certificateVerification.verifyCertificate =
-                +[](const UA_CertificateVerification *, const UA_ByteString *) -> UA_StatusCode
-              { return UA_STATUSCODE_GOOD; };
+            // No CA certificate provided - disable verification (trust all certificates)
+            client.config()->certificateVerification.clear = +[](UA_CertificateVerification *) {};
+            client.config()->certificateVerification.verifyCertificate =
+              +[](const UA_CertificateVerification *, const UA_ByteString *) -> UA_StatusCode
+            { return UA_STATUSCODE_GOOD; };
 
-              RCLCPP_WARN(
-                getLogger(),
-                "Certificate verification DISABLED (no CA, trust all). This is INSECURE and should "
-                "only be "
-                "used for testing!");
-            }
-            else
-            {
-              RCLCPP_WARN(
-                getLogger(),
-                "Certificate verification requested but NO CA certificate provided. "
-                "Server certificate will be validated using default truststore (may fail).");
-            }
+            RCLCPP_WARN(
+              getLogger(),
+              "Certificate verification DISABLED (no CA certificate provided, trust all). "
+              "This is INSECURE and should only be used for testing! "
+              "Provide 'security.ca_certificate_path' to enable verification.");
           }
         }
       }
@@ -412,8 +383,7 @@ bool OPCUAHardwareInterface::configure_ua_client()
 
     // Print Client Configuration with security details
     opcua_helpers::print_client_info(
-      client, getLogger(), client_cert_, client_key_, ca_cert_, verify_certificates,
-      selectedEndpoint->securityLevel());
+      client, getLogger(), client_cert_, client_key_, ca_cert_, selectedEndpoint->securityLevel());
 
     // Connect to the server using the credentials from the URDF
     RCLCPP_INFO(getLogger(), "\tConnection to the Endpoint URL: %s...", endpoint_url_.c_str());
