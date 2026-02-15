@@ -1,0 +1,19 @@
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = DE
+O = ROS 2
+CN = ros2_opc_ua example server
+
+[v3_req]
+keyUsage = critical, digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = @alt_names
+
+[alt_names]
+URI.1 = urn:open62541pp.server.application:ros2_opc_ua
+DNS.1 = localhost
+IP.1 = 127.0.0.1
