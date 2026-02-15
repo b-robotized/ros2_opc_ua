@@ -75,55 +75,66 @@ ros2 run opcua_bringup example_opcua_server --ros-args \
     -p security.private_key_path:=$(ros2 pkg prefix opcua_bringup)/share/opcua_bringup/config/server_key.der
 ```
 
-### Certificates
+### Certificate Setup
 
-The server requires X.509 certificates for secure communication (`Sign` or `SignAndEncrypt`).
-A set of self-signed certificates (valid for 100 years) is provided in the `config/` directory and is installed to `share/opcua_bringup/config/`.
+The package supports two certificate configurations:
 
-#### Generating new certificates
+#### 1. Simple Self-Signed Certificates (Testing Only)
 
-The server requires the `ApplicationURI` (`urn:open62541pp.server.application:ros2_opc_ua`) to be present in the Subject Alternative Name (SAN) of the certificate.
+Self-signed certificates (valid for 100 years) are provided in `config/` directory for quick testing. These work for insecure mode or when certificate verification is disabled.
 
-1.  Create a configuration file `san.cnf`:
+#### 2. Certificate Chain with CA (Recommended for Secure Communication)
 
-    ```ini
-    [req]
-    distinguished_name = req_distinguished_name
-    x509_extensions = v3_req
-    prompt = no
+A complete PKI setup is provided in `config/pki/` with:
+- **Root CA** (`ca_cert.der`) - Signs both server and client certificates
+- **Server Certificate** (`server_cert.der`, `server_key.der`) - Signed by CA
+- **Client Certificate** (`client_cert.der`, `client_key.der`) - Signed by CA
 
-    [req_distinguished_name]
-    C = DE
-    O = ROS 2
-    CN = ros2_opc_ua example server
+**Running with Verified Certificates:**
 
-    [v3_req]
-    keyUsage = critical, digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
-    extendedKeyUsage = serverAuth, clientAuth
-    subjectAltName = @alt_names
+```bash
+# Terminal 1: Start server with CA-based client verification
+ros2 launch opcua_bringup example_server_secure.launch.xml
 
-    [alt_names]
-    URI.1 = urn:open62541pp.server.application:ros2_opc_ua
-    DNS.1 = localhost
-    IP.1 = 127.0.0.1
-    ```
+# Terminal 2: Start client with proper certificates
+ros2 launch opcua_bringup opcua_bringup_secure.launch.xml
+```
 
-2.  Run OpenSSL:
+#### Generating Your Own Certificate Chain
 
-    ```bash
-    # 1. Generate PEM certificate and private key using the config
-    openssl req -x509 -newkey rsa:2048 \
-      -keyout server_key.pem \
-      -out server_cert.pem \
-      -days 36500 -nodes \
-      -config san.cnf
+To create a new certificate chain:
 
-    # 2. Convert Certificate to DER format
-    openssl x509 -outform der -in server_cert.pem -out server_cert.der
+```bash
+cd config/pki
 
-    # 3. Convert Private Key to DER format
-    openssl rsa -outform der -in server_key.pem -out server_key.der
-    ```
+# 1. Generate Root CA
+openssl genrsa -out ca_key.pem 2048
+openssl req -x509 -new -nodes -key ca_key.pem -sha256 -days 36500 -out ca_cert.pem \
+  -subj "/C=DE/O=ROS 2/CN=ros2_opc_ua Root CA"
+
+# 2. Generate Server Certificate (create server_san.cnf first - see config/pki/)
+openssl genrsa -out server_key.pem 2048
+openssl req -new -key server_key.pem -out server_csr.pem -config server_san.cnf
+openssl x509 -req -in server_csr.pem -CA ca_cert.pem -CAkey ca_key.pem \
+  -CAcreateserial -out server_cert.pem -days 36500 -sha256 \
+  -extensions v3_req -extfile server_san.cnf
+
+# 3. Generate Client Certificate (create client_san.cnf first - see config/pki/)
+openssl genrsa -out client_key.pem 2048
+openssl req -new -key client_key.pem -out client_csr.pem -config client_san.cnf
+openssl x509 -req -in client_csr.pem -CA ca_cert.pem -CAkey ca_key.pem \
+  -CAcreateserial -out client_cert.pem -days 36500 -sha256 \
+  -extensions v3_req -extfile client_san.cnf
+
+# 4. Convert to DER format (required by open62541)
+openssl x509 -outform der -in ca_cert.pem -out ca_cert.der
+openssl x509 -outform der -in server_cert.pem -out server_cert.der
+openssl rsa -outform der -in server_key.pem -out server_key.der
+openssl x509 -outform der -in client_cert.pem -out client_cert.der
+openssl rsa -outform der -in client_key.pem -out client_key.der
+```
+
+**Important:** The SAN configuration files (`server_san.cnf`, `client_san.cnf`) must include the correct `ApplicationURI` for certificate validation to succeed.
 
 ### Running the ROS 2 Control Node
 

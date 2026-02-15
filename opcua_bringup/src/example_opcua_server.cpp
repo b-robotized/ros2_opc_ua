@@ -236,18 +236,43 @@ int main(int argc, char ** argv)
   // Declare parameters
   std::string cert_path = node->declare_parameter("security.certificate_path", "");
   std::string key_path = node->declare_parameter("security.private_key_path", "");
-  bool verify_client_certificates =
-    node->declare_parameter("security.verify_client_certificates", false);
+  std::string ca_cert_path = node->declare_parameter("security.ca_certificate_path", "");
 
   opcua::ByteString loadedCertificate;
   opcua::ByteString loadedPrivateKey;
   opcua::ByteString generatedCertificate;
   opcua::ByteString generatedPrivateKey;
+  opcua::ByteString caCertificate;
 
   // Storage to track which certificate is used for which policy
   std::map<std::string, std::string> certificateMapping;
 
-  // 1. Try to load from file if paths are provided
+  // 1. Try to load CA certificate if provided
+  if (!ca_cert_path.empty())
+  {
+    try
+    {
+      std::ifstream f(ca_cert_path);
+      if (f.good())
+      {
+        caCertificate = readFile(ca_cert_path);
+        RCLCPP_INFO(
+          node->get_logger(), "Loaded CA certificate from %s (%zu bytes)", ca_cert_path.c_str(),
+          caCertificate.length());
+      }
+      else
+      {
+        RCLCPP_WARN(
+          node->get_logger(), "CA certificate file not found at %s", ca_cert_path.c_str());
+      }
+    }
+    catch (...)
+    {
+      RCLCPP_WARN(node->get_logger(), "Error reading CA certificate file.");
+    }
+  }
+
+  // 2. Try to load server certificate from file if paths are provided
   if (!cert_path.empty() && !key_path.empty())
   {
     try
@@ -258,7 +283,7 @@ int main(int argc, char ** argv)
         loadedCertificate = readFile(cert_path);
         loadedPrivateKey = readFile(key_path);
         RCLCPP_INFO(
-          node->get_logger(), "Loaded certificate from %s (%zu bytes)", cert_path.c_str(),
+          node->get_logger(), "Loaded server certificate from %s (%zu bytes)", cert_path.c_str(),
           loadedCertificate.length());
       }
       else
@@ -272,7 +297,7 @@ int main(int argc, char ** argv)
     }
   }
 
-  // 2. Always generate self-signed certificate
+  // 3. Always generate self-signed certificate
   RCLCPP_INFO(node->get_logger(), "Generating self-signed certificate...");
   try
   {
@@ -288,7 +313,7 @@ int main(int argc, char ** argv)
     RCLCPP_ERROR(node->get_logger(), "Certificate generation failed: %s", e.what());
   }
 
-  // 3. Select primary certificate (prefer loaded)
+  // 4. Select primary certificate (prefer loaded)
   const opcua::ByteString * primaryCert = nullptr;
   const opcua::ByteString * primaryKey = nullptr;
   std::string primarySource;
@@ -321,28 +346,26 @@ int main(int argc, char ** argv)
   if (primaryCert && primaryKey && !primaryCert->empty() && !primaryKey->empty())
   {
     // Config with encryption
-    // Empty trust/revocation lists = accept all client certificates (unless
-    // verify_client_certificates is true)
-    config_ptr = std::make_unique<opcua::ServerConfig>(
-      4840, *primaryCert, *primaryKey, opcua::Span<const opcua::ByteString>{},
-      opcua::Span<const opcua::ByteString>{});
-
-    if (!verify_client_certificates)
+    // If CA cert is provided, use it as trustlist (auto-enable verification)
+    if (!caCertificate.empty())
     {
-      RCLCPP_WARN(
-        node->get_logger(),
-        "Server configured to ACCEPT ALL client certificates (empty trustlist). "
-        "This is INSECURE! Set 'security.verify_client_certificates:=true' to enable "
-        "verification.");
+      std::vector<opcua::ByteString> trustList = {caCertificate};
+      config_ptr = std::make_unique<opcua::ServerConfig>(
+        4840, *primaryCert, *primaryKey, trustList, opcua::Span<const opcua::ByteString>{});
+      RCLCPP_INFO(
+        node->get_logger(), "Server configured with CA trustlist - verifying client certificates.");
     }
     else
     {
-      RCLCPP_INFO(
-        node->get_logger(),
-        "Client certificate verification would be ENABLED (not yet implemented).");
+      // Empty trust/revocation lists = accept all client certificates
+      config_ptr = std::make_unique<opcua::ServerConfig>(
+        4840, *primaryCert, *primaryKey, opcua::Span<const opcua::ByteString>{},
+        opcua::Span<const opcua::ByteString>{});
+
       RCLCPP_WARN(
         node->get_logger(),
-        "Note: Trustlist management not yet implemented, falling back to accept all.");
+        "Server configured to ACCEPT ALL client certificates (no CA provided). "
+        "This is INSECURE! Provide 'security.ca_certificate_path' to enable verification.");
     }
 
     // Record which policies use primary cert (default: all)
@@ -426,8 +449,8 @@ int main(int argc, char ** argv)
   config.setApplicationName(APP_NAME);
   config.setApplicationUri(APP_URI);
 
-  // Disable client certificate verification if requested (default)
-  if (!verify_client_certificates)
+  // Disable client certificate verification if CA is not provided
+  if (caCertificate.empty())
   {
     // Override the certificate verification to accept all client certificates
     // SecureChannel PKI verifies the client's certificate during channel establishment
@@ -445,13 +468,12 @@ int main(int argc, char ** argv)
     RCLCPP_WARN(
       node->get_logger(),
       "Server client certificate verification DISABLED - accepting ALL client certificates. "
-      "This is INSECURE! Set 'security.verify_client_certificates:=true' to enable verification.");
+      "This is INSECURE! Provide 'security.ca_certificate_path' to enable verification.");
   }
   else
   {
     RCLCPP_INFO(
-      node->get_logger(),
-      "Server client certificate verification ENABLED (using default trustlist).");
+      node->get_logger(), "Server client certificate verification ENABLED using CA trustlist.");
   }
 
   // Configure User Token Policies - using defaults plus AccessControl logic for now
