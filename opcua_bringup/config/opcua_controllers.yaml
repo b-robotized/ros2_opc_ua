@@ -1,3 +1,18 @@
 controller_manager:
   ros__parameters:
-    update_rate: 50  # Hz
+    update_rate: 20  # Hz
+
+    gpio_controller:
+     type: gpio_controllers/GpioCommandController
+
+
+gpio_controller:
+  ros__parameters:
+    gpios:
+      - robot_command
+    command_interfaces:
+      robot_command:
+        - interfaces:
+          - my_integer_interface
+          - commandPos_0
+          - commandPos_1

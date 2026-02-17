@@ -796,23 +796,22 @@ int main(int argc, char ** argv)
     server,
     [&]
     {
-      if (counter % 10 == 0)
-      {
-        commandPos[0] = !commandPos[0];
-        commandPos[1] = !commandPos[1];
-      }
       angle = static_cast<float>(counter) * 0.01f;
       currentPos[0] = std::sin(angle);
       currentPos[1] = std::cos(angle);
+      currentPosNode.writeValue(opcua::Variant(currentPos));
 
       ++counter;
-      std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
-                << std::endl;
-      std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]"
+
+      auto answerVal = myIntegerNode.readValue();
+      std::cout << "MyInteger is: " << answerVal.to<int>() << std::endl;
+
+      auto commandPosVal = commandPosNode.readValue().to<std::vector<bool>>();
+      std::cout << "commandPos is: [ " << commandPosVal[0] << " , " << commandPosVal[1] << " ]"
                 << std::endl;
 
-      commandPosNode.writeValue(opcua::Variant(commandPos));
-      currentPosNode.writeValue(opcua::Variant(currentPos));
+      std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]"
+                << std::endl;
     },
     interval);
 

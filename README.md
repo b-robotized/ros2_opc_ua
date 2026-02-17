@@ -147,3 +147,26 @@ Use the `controller_manager/introspection` topic to inspect the value of the sta
 ```
 ros2 topic echo /controller_manager/introspection_data/full
 ```
+
+### Running ROS2 Write Test
+
+In order to test the write operation of the hardware interface, a [`gpio_command_controller`]( https://control.ros.org/master/doc/ros2_controllers/gpio_controllers/doc/userdoc.html) was added to the project.
+
+Commands will be sent to the 3 example GPIO interfaces defined in the URDF: `my_integer_interface`, `commandPos_0` and `commandPos_1`.
+
+After running the OPC UA `server` and the `control node`, in another terminal load the controller:
+```
+ros2 control load_controller gpio_controller
+```
+
+Then, activate it:
+```
+ros2 control set_controller_state gpio_controller inactive
+
+ros2 control set_controller_state gpio_controller active
+```
+
+To send the commands to the ROS2 interfaces, run:
+```
+ros2 topic pub /gpio_controller/commands control_msgs/msg/DynamicInterfaceGroupValues "{interface_groups: [robot_command], interface_values: [{interface_names: [my_integer_interface, commandPos_0, commandPos_1], values: [62, 1.0, 1.0]}]}"
+```

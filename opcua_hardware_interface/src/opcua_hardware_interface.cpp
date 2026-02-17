@@ -1127,11 +1127,12 @@ std::vector<double> OPCUAHardwareInterface::get_command_vector(
         current_command = get_state(current_fallback_interface_name);
       }
 
-      if (std::isnan(current_command))
-      {
-        continue;
-      }
+      // if (std::isnan(current_command))
+      // {
+      //   continue;
+      // }
     }
+
     command_vector.push_back(current_command);
   }
   return command_vector;

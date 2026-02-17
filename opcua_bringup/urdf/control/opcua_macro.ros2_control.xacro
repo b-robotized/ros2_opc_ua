@@ -40,6 +40,7 @@
             <!-- IMPORTANT With the current implementation the indexes of same Array SHOULD be ordered in an ascending manner and declared consecutively -->
             <sensor name="robot_sensor">
                 <xacro:state_interface_OPCUA name="my_integer_interface" data_type="double" ua_type="UA_Int32" ua_ns="1" ua_identifier="1"/>
+
                 <xacro:state_interface_OPCUA name="currentPos_0" data_type="double" ua_type="UA_Float" ua_ns="1" ua_identifier="10" n_elements="2" index="0"/>
                 <xacro:state_interface_OPCUA name="currentPos_1" data_type="double" ua_type="UA_Float" ua_ns="1" ua_identifier="10" n_elements="2" index="1"/>
 
@@ -49,18 +50,11 @@
 
             <gpio name="robot_command">
                 <xacro:command_interface_OPCUA name="my_integer_interface" data_type="double" ua_type="UA_Int32" ua_ns="1" ua_identifier="1" initial_value="42.0"/>
-                 <xacro:command_interface_OPCUA name="commandPos_0" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="0" initial_value="0"/>
-                <xacro:command_interface_OPCUA name="commandPos_1" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="1" initial_value="1"/>
-            </gpio>
 
-            <!-- <gpio name="gripper">
-                <xacro:command_interface_OPCUA name="close" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="19" initial_value="true"/>
-                <xacro:command_interface_OPCUA name="open" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="20" initial_value="false"/>
-            </gpio>
-            <sensor name="gripper_sensor">
-                <xacro:state_interface_OPCUA name="object_sensor" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="109" initial_value="true"/>
-            </sensor> -->
+                <xacro:command_interface_OPCUA name="commandPos_0" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="0" initial_value="0"/>
+                <xacro:command_interface_OPCUA name="commandPos_1" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="1" initial_value="0"/>
 
+            </gpio>
 
         </ros2_control>
 
