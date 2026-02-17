@@ -147,3 +147,8 @@ Use the `controller_manager/introspection` topic to inspect the value of the sta
 ```
 ros2 topic echo /controller_manager/introspection_data/full
 ```
+
+Send the command to the controller and you should see the commands being changes in the server
+```
+ros2 topic pub /opcua_controller/commands control_msgs/msg/DynamicInterfaceGroupValues "{interface_groups: ['robot_command'], interface_values: [{interface_names: ['commandPos_0', 'commandPos_1', 'my_integer_interface'], values: [1.0, 0.0, 28.0]}]}" --once
+```

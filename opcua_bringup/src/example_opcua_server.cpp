@@ -765,7 +765,6 @@ int main(int argc, char ** argv)
       .setValueRank(opcua::ValueRank::Scalar)
       .setValue(opcua::Variant{42}));
 
-  std::vector<float> currentPos{0.15f, -1.25f};
   opcua::Node currentPosNode = parentNode.addVariable(
     {1, 10}, "Current Position Array",
     opcua::VariableAttributes{}
@@ -774,9 +773,8 @@ int main(int argc, char ** argv)
       .setDataType(DataTypeId::Float)
       .setArrayDimensions({0})                       // single dimension but unknown in size
       .setValueRank(opcua::ValueRank::OneDimension)  // (c.f common.hpp line 157)
-      .setValue(opcua::Variant{currentPos}));
+      .setValue(opcua::Variant{std::vector<float>{0.0f, 0.0f}}));
 
-  std::vector<UA_Boolean> commandPos = {UA_FALSE, UA_TRUE};
   // std::bool is not supported, UA_Boolean is uint8_t
   opcua::Node commandPosNode = parentNode.addVariable(
     {1, 11}, "Command Position Array",
@@ -786,47 +784,33 @@ int main(int argc, char ** argv)
       .setDataType(DataTypeId::Boolean)
       .setArrayDimensions({0})                       //! single dimension but unknown in size
       .setValueRank(opcua::ValueRank::OneDimension)  //! (c.f common.hpp line 157)
-      .setValue(opcua::Variant{commandPos}));
+      .setValue(opcua::Variant{std::vector<UA_Boolean>{UA_FALSE, UA_TRUE}}));
 
   // Add a callback fucnction to simulate change over time
   size_t counter = 0;
   const double interval = 500;  // milliseconds
-  float angle;
   const opcua::CallbackId id1 = opcua::addRepeatedCallback(
     server,
     [&]
     {
-      if (counter % 10 == 0)
-      {
-        commandPos[0] = !commandPos[0];
-        commandPos[1] = !commandPos[1];
-      }
-      angle = static_cast<float>(counter) * 0.01f;
-      currentPos[0] = std::sin(angle);
-      currentPos[1] = std::cos(angle);
-
+      const auto commandPos = commandPosNode.readValue().to<std::vector<bool>>();
+      auto currentPos = currentPosNode.readValue().to<std::vector<float>>();
       ++counter;
+      const float angle = static_cast<float>(counter) * 0.01f;
+      currentPos[0] = commandPos[0] * std::sin(angle);
+      currentPos[1] = commandPos[1] * std::cos(angle);
+
       std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
                 << std::endl;
       std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]"
                 << std::endl;
 
-      commandPosNode.writeValue(opcua::Variant(commandPos));
       currentPosNode.writeValue(opcua::Variant(currentPos));
+
+      auto answerVal = myIntegerNode.readValue();
+      std::cout << "The answer is: " << answerVal.to<int>() << std::endl;
     },
     interval);
-
-  // Read the initial value (attribute) from the node
-  auto answerVal = myIntegerNode.readValue();
-  std::cout << "The answer is: " << answerVal.to<int>() << std::endl;
-
-  auto currentPosVal = currentPosNode.readValue().to<std::vector<float>>();
-  std::cout << "The curentPos is: [ " << currentPosVal.at(0) << " , " << currentPosVal.at(1)
-            << " ]." << std::endl;
-
-  auto commandPosVal = commandPosNode.readValue().to<std::vector<bool>>();
-  std::cout << "The commandPos is: [ " << commandPosVal.at(0) << " , " << commandPosVal.at(1)
-            << " ]." << std::endl;
 
   // Print detailed endpoint configuration
   print_server_endpoints(UA_Server_getConfig(server.handle()), node->get_logger());
