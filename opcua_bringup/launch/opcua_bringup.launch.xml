@@ -1,9 +1,4 @@
 <launch>
-
-    <!--OPC UA server node -->
-    <!-- <node pkg="opcua_bringup" exec="opcua_server" output="both"> -->
-    <!-- </node> -->
-
     <arg name="mock_hardware" default="false" />
     <arg name="mock_sensor_commands" default="false"/>
 
@@ -16,10 +11,13 @@
 
     <!--control_node-->
     <node pkg="controller_manager" exec="ros2_control_node" output="both">
-        <param name="robot_description" value="$(var robot_description_content)" />
-        <param from="$(find-pkg-share opcua_bringup)/config/opcua_controllers.yaml"/>
+        <param name="update_rate" value="20"/>
     </node>
 
+    <let name="controllers_file" value="opcua_controllers.yaml"/>
+    <let name="controllers_file_path" value="$(find-pkg-share opcua_bringup)/config/$(var controllers_file)"/>
 
+    <node pkg="controller_manager" exec="spawner" name="jsb_spawner" output="screen" args="joint_state_broadcaster -p $(var controllers_file_path)"/>
+    <node pkg="controller_manager" exec="spawner" name="opcua_ctrl_spawner" output="screen" args="opcua_controller -p $(var controllers_file_path)"/>
 
 </launch>
