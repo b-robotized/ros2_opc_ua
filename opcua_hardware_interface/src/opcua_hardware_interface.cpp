@@ -611,6 +611,10 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
           std::make_pair(index, name));
         current_command_interface_ua_node.fallback_state_interface_names.emplace(
           std::make_pair(index, fallback_name));
+
+        current_command_interface_ua_node.last_command_values.resize(
+          num_elements, std::numeric_limits<double>::quiet_NaN());
+
         command_interfaces_nodes.push_back(current_command_interface_ua_node);
       }
     }
@@ -882,37 +886,33 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
   // Reserve space for write request items
   write_items.reserve(command_interfaces_nodes.size());
 
-  for (const auto & command_interface_ua_node : command_interfaces_nodes)
+  for (auto & command_interface_ua_node : command_interfaces_nodes)
   {
     opcua::Variant ua_variant;  // will be used to write the value to the OPC UA server
+    std::string command_interface_name = command_interface_ua_node.command_interface_names.at(0);
 
     // if the command interface is scalar
     if (command_interface_ua_node.num_elements == 1)
     {
-      std::string command_interface_name = command_interface_ua_node.command_interface_names.at(0);
-      std::string fallback_name = command_interface_ua_node.fallback_state_interface_names.at(0);
-
       // store the current val and reset the ros-side command value
       double val = get_command(command_interface_name);
       set_command(command_interface_name, std::numeric_limits<double>::quiet_NaN());
 
       if (std::isnan(val))
       {
-        // if the original value was NaN and there exist a state interface of the same name,
-        // write corresponding state interface
-        if (!fallback_name.empty())
-        {
-          val = get_state(fallback_name);
-        }
-
-        // if we STILL don't have a fallback value on, don't update the write buffer.
-        // the last valid command is written
-        if (std::isnan(val))
-        {
-          continue;
-        }
+        continue;
       }
+      if (val == command_interface_ua_node.last_command_values[0])
+      {
+        continue;
+      }
+      command_interface_ua_node.last_command_values[0] = val;
+
       ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
+
+      RCLCPP_INFO(
+          getLogger(),
+          "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
     }
     else  // if the command interface is an array
     {
@@ -922,6 +922,11 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
       {
         continue;  // Do no send a Write Request
       }
+      if (command_vector == command_interface_ua_node.last_command_values)
+      {
+        continue;
+      }
+      command_interface_ua_node.last_command_values = command_vector;
 
       ua_variant = get_array_command_variant(command_interface_ua_node.ua_type, command_vector);
     }
@@ -1122,15 +1127,7 @@ std::vector<double> OPCUAHardwareInterface::get_command_vector(
 
     if (std::isnan(current_command))
     {
-      if (!current_fallback_interface_name.empty())
-      {
-        current_command = get_state(current_fallback_interface_name);
-      }
-
-      if (std::isnan(current_command))
-      {
-        continue;
-      }
+      return command_vector; // if any command in an array is NaN, skip writing this cycle
     }
     command_vector.push_back(current_command);
   }
