@@ -65,6 +65,8 @@ struct CommandInterfaceUANode
   UAType ua_type;
   size_t num_elements;
   std::map<size_t, std::string> command_interface_names;
+
+  // TODO: no fallback at all! the server is stateful ,we're not streaming
   std::map<size_t, std::string>
     fallback_state_interface_names;  // if no fallback_name --> empty string
 };
