@@ -69,6 +69,7 @@ struct CommandInterfaceUANode
   // TODO: no fallback at all! the server is stateful ,we're not streaming
   std::map<size_t, std::string>
     fallback_state_interface_names;  // if no fallback_name --> empty string
+  std::vector<double> last_command_values;
 };
 
 class OPCUAHardwareInterface : public hardware_interface::SystemInterface

@@ -611,6 +611,10 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
           std::make_pair(index, name));
         current_command_interface_ua_node.fallback_state_interface_names.emplace(
           std::make_pair(index, fallback_name));
+
+        current_command_interface_ua_node.last_command_values.resize(
+          num_elements, std::numeric_limits<double>::quiet_NaN());
+
         command_interfaces_nodes.push_back(current_command_interface_ua_node);
       }
     }
@@ -882,7 +886,7 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
   // Reserve space for write request items
   write_items.reserve(command_interfaces_nodes.size());
 
-  for (const auto & command_interface_ua_node : command_interfaces_nodes)
+  for (auto & command_interface_ua_node : command_interfaces_nodes)
   {
     opcua::Variant ua_variant;  // will be used to write the value to the OPC UA server
     std::string command_interface_name = command_interface_ua_node.command_interface_names.at(0);
@@ -898,6 +902,12 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
       {
         continue;
       }
+      if (val == command_interface_ua_node.last_command_values[0])
+      {
+        continue;
+      }
+      command_interface_ua_node.last_command_values[0] = val;
+
       ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
 
       RCLCPP_INFO(
@@ -912,6 +922,11 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
       {
         continue;  // Do no send a Write Request
       }
+      if (command_vector == command_interface_ua_node.last_command_values)
+      {
+        continue;
+      }
+      command_interface_ua_node.last_command_values = command_vector;
 
       ua_variant = get_array_command_variant(command_interface_ua_node.ua_type, command_vector);
     }
