@@ -884,6 +884,7 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
   }
 
   // Reserve space for write request items
+  write_items.clear();
   write_items.reserve(command_interfaces_nodes.size());
 
   for (auto & command_interface_ua_node : command_interfaces_nodes)
