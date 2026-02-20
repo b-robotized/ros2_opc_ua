@@ -466,7 +466,7 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
 
       ROSInterfaceUANode current_state_interface_ua_node;
       uint16_t ua_ns;
-      uint32_t ua_identifier;
+      uint32_t ua_identifier;  // Current implementation only accepts identifiers of uint32_t type
 
       // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and
       // uint32_t
@@ -527,6 +527,7 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
       UAType ua_type;
       size_t num_elements = 1;
       size_t index = 0;
+      double prev_cmd_val = 0.0;
 
       // Check if all necessary parameters exist
       try
@@ -543,6 +544,11 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
         if (descr.interface_info.parameters.count("index"))
         {
           index = std::stoul(descr.interface_info.parameters.at("index"));
+        }
+
+        if (descr.interface_info.parameters.count("initial_value"))
+        {
+          prev_cmd_val = std::stod(descr.interface_info.parameters.at("initial_value"));
         }
       }
       catch (const std::exception & e)
@@ -579,6 +585,7 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
       ROSInterfaceMapping command_interface_mapping;
       command_interface_mapping.index = index;
       command_interface_mapping.name = name;
+      command_interface_mapping.previous_command_value = prev_cmd_val;
 
       // OPC UA Array was already processed, only populate command_interface_name
       if (it != command_interfaces_nodes.end())
@@ -743,8 +750,13 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
   // Reserve space for write request items
   write_items.reserve(command_interfaces_nodes.size());
 
-  for (const auto & command_node : command_interfaces_nodes)
+  std::vector<double> previous_commands;
+
+  for (auto & command_node : command_interfaces_nodes)
   {
+    previous_commands.clear();
+    previous_commands.reserve(command_node.num_elements);
+
     switch (command_node.ua_type)
     {
       case UAType::UA_Boolean:
@@ -894,8 +906,8 @@ bool OPCUAHardwareInterface::process_read_data(
     // Check first if the UA number of elements == ROS2 number of elements
     if (ua_size != state_node.num_elements)
     {
-      RCLCPP_FATAL(
-        getLogger(),
+      RCLCPP_FATAL_THROTTLE(
+        getLogger(), *get_clock(), 1000,
         "\tNumber of State Interfaces mapped to node ID (%u, %u) does not match the UA "
         "Array size on the server "
         "side.",
@@ -915,8 +927,8 @@ bool OPCUAHardwareInterface::process_read_data(
       }
       else
       {
-        RCLCPP_ERROR(
-          getLogger(),
+        RCLCPP_ERROR_THROTTLE(
+          getLogger(), *get_clock(), 1000,
           "\tState Interface %s mapping index %zu is out of bounds. No matching UA array index "
           "found.",
           map.name.c_str(), map.index);
@@ -928,26 +940,38 @@ bool OPCUAHardwareInterface::process_read_data(
 
 template <typename T>
 bool OPCUAHardwareInterface::process_write_node(
-  const ROSInterfaceUANode & node, std::vector<opcua::ua::WriteValue> & write_items_vector)
+  ROSInterfaceUANode & node, std::vector<opcua::ua::WriteValue> & write_items_vector)
 {
   // prepare the buffer
   std::vector<double> commands_to_send(node.num_elements, std::numeric_limits<double>::quiet_NaN());
+  bool command_changed = false;
 
   // fill the buffer
-  for (const auto & map : node.mappings)
+  for (auto & map : node.mappings)
   {
     if (map.index >= commands_to_send.size())
     {
-      RCLCPP_WARN(
-        getLogger(),
+      RCLCPP_WARN_THROTTLE(
+        getLogger(), *get_clock(), 1000,
         "\tCommand interface %s index %zu exceeds number of elements declared in URDF.",
         map.name.c_str(), map.index);
       continue;
     }
 
     double val = get_command(map.name);
-
+    // Check if a new command value was sent to the interface
+    if (val != map.previous_command_value)
+    {
+      command_changed = true;
+      map.previous_command_value = val;
+    }
     commands_to_send[map.index] = val;
+  }
+
+  // If the command is still the same as the previous cycle, we don't write
+  if (!command_changed)
+  {
+    return false;
   }
 
   // If ANY element in the array is NaN, we abort the entire write.
@@ -1015,25 +1039,25 @@ template bool OPCUAHardwareInterface::process_read_data<double>(
   const opcua::Variant &, const ROSInterfaceUANode &);
 
 template bool OPCUAHardwareInterface::process_write_node<bool>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 template bool OPCUAHardwareInterface::process_write_node<uint8_t>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 template bool OPCUAHardwareInterface::process_write_node<int16_t>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 template bool OPCUAHardwareInterface::process_write_node<uint16_t>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 template bool OPCUAHardwareInterface::process_write_node<int32_t>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 template bool OPCUAHardwareInterface::process_write_node<uint32_t>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 template bool OPCUAHardwareInterface::process_write_node<int64_t>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 template bool OPCUAHardwareInterface::process_write_node<uint64_t>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 template bool OPCUAHardwareInterface::process_write_node<float>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 template bool OPCUAHardwareInterface::process_write_node<double>(
-  const ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 
 }  // namespace opcua_hardware_interface
 

@@ -50,8 +50,9 @@ enum class UAType
 
 struct ROSInterfaceMapping
 {
-  size_t index;      // Index in the OPC UA Array
-  std::string name;  // ROS Interface Name
+  size_t index;                   // Index in the OPC UA Array
+  std::string name;               // ROS Interface Name
+  double previous_command_value;  // Track last command written, only for command interfaces
 };
 
 struct ROSInterfaceUANode
@@ -123,7 +124,7 @@ private:
 
   template <typename T>
   bool process_write_node(
-    const ROSInterfaceUANode & node, std::vector<opcua::ua::WriteValue> & write_values_vec);
+    ROSInterfaceUANode & node, std::vector<opcua::ua::WriteValue> & write_values_vec);
 
   // Client identification and security (set once during configure_ua_client)
   std::string app_uri_;
