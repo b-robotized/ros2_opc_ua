@@ -14,6 +14,26 @@ Currently, the hardware interface acts an OPC UA Client that sets the value of s
 
 ---
 
+## Notes
+
+With the current implementation:
+
+### 1.UA Node Identifiers
+
+The UA Node Identifiers declared inside the `URDF` should be **numeric**: `NodeIdType::Numeric`.
+
+### 2. Command Interfaces and UA Arrays
+For ROS2 **Command interfaces** mapped to OPC UA **Arrays**, **all** the indexes should be declared inside the `URDF`.
+
+Otherwise, write requests for that specific Array are not sent to the server.(e.g: `buttonArray_2` in the example URDF).
+This is done to prevent corrupting the remaining uncommanded indices.
+
+### 3. Tracking last command value
+ To avoid spamming write requests, the last commanded value is tracked for each ROS2 interface.
+ A write request is sent only when the command value changes.
+
+
+
 ## Configuration
 
 The OPC UA server allows connections from users with specific credentials that could be managed through the `<ros2_control>` tag of your robot's URDF file.

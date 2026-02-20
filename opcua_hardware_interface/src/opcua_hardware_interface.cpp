@@ -464,40 +464,44 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
         continue;
       }
 
-      StateInterfaceUANode current_state_interface_ua_node;
+      ROSInterfaceUANode current_state_interface_ua_node;
+      uint16_t ua_ns;
+      uint32_t ua_identifier;  // Current implementation only accepts identifiers of uint32_t type
 
       // Use C++ 17 from_chars to convert the URDF string parameters into uint16_t and
       // uint32_t
-      [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(
-        ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(),
-        current_state_interface_ua_node.ua_ns);
-      [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(
-        ua_id_str.data(), ua_id_str.data() + ua_id_str.size(),
-        current_state_interface_ua_node.ua_identifier);
+      [[maybe_unused]] auto [ptr1, ec1] =
+        std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(), ua_ns);
+      [[maybe_unused]] auto [ptr2, ec2] =
+        std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(), ua_identifier);
+
+      opcua::NodeId node_id(ua_ns, ua_identifier);
+      current_state_interface_ua_node.node_id = node_id;
       current_state_interface_ua_node.ua_type = ua_type;
       current_state_interface_ua_node.num_elements = num_elements;
 
       // Find if a state_interface with the same NodeId was already processed
       auto same_nodeid_state_interface_node =
         [&current_state_interface_ua_node](const auto & state_interface_ua_node)
-      {
-        return (state_interface_ua_node.ua_ns == current_state_interface_ua_node.ua_ns) &&
-               (state_interface_ua_node.ua_identifier ==
-                current_state_interface_ua_node.ua_identifier);
-      };
+      { return (state_interface_ua_node.node_id == current_state_interface_ua_node.node_id); };
+
       auto it = std::find_if(
         state_interfaces_nodes.begin(), state_interfaces_nodes.end(),
         same_nodeid_state_interface_node);
 
+      ROSInterfaceMapping state_mapping;
+      state_mapping.name = name;
+      state_mapping.index = index;
+
       // OPC UA Array was already processed
       if (it != state_interfaces_nodes.end())
       {
-        it->state_interface_names.emplace(std::make_pair(index, name));
+        it->mappings.push_back(state_mapping);
       }
       else
       {
         // Add the name to the current interface_ua_node instead
-        current_state_interface_ua_node.state_interface_names.emplace(std::make_pair(index, name));
+        current_state_interface_ua_node.mappings.push_back(state_mapping);
         state_interfaces_nodes.push_back(current_state_interface_ua_node);
       }
     }
@@ -520,10 +524,10 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
     {
       std::string ua_ns_str;
       std::string ua_id_str;
-      std::string fallback_name = "";
       UAType ua_type;
       size_t num_elements = 1;
       size_t index = 0;
+      double prev_cmd_val = 0.0;
 
       // Check if all necessary parameters exist
       try
@@ -541,6 +545,11 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
         {
           index = std::stoul(descr.interface_info.parameters.at("index"));
         }
+
+        if (descr.interface_info.parameters.count("initial_value"))
+        {
+          prev_cmd_val = std::stod(descr.interface_info.parameters.at("initial_value"));
+        }
       }
       catch (const std::exception & e)
       {
@@ -550,71 +559,43 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
         continue;
       }
 
-      CommandInterfaceUANode current_command_interface_ua_node;
+      ROSInterfaceUANode current_command_interface_ua_node;
+      uint16_t ua_ns;
+      uint32_t ua_identifier;
 
-      [[maybe_unused]] auto [ptr1, ec1] = std::from_chars(
-        ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(),
-        current_command_interface_ua_node.ua_ns);
-      [[maybe_unused]] auto [ptr2, ec2] = std::from_chars(
-        ua_id_str.data(), ua_id_str.data() + ua_id_str.size(),
-        current_command_interface_ua_node.ua_identifier);
+      [[maybe_unused]] auto [ptr1, ec1] =
+        std::from_chars(ua_ns_str.data(), ua_ns_str.data() + ua_ns_str.size(), ua_ns);
+      [[maybe_unused]] auto [ptr2, ec2] =
+        std::from_chars(ua_id_str.data(), ua_id_str.data() + ua_id_str.size(), ua_identifier);
+
+      opcua::NodeId node_id(ua_ns, ua_identifier);
+      current_command_interface_ua_node.node_id = node_id;
       current_command_interface_ua_node.ua_type = ua_type;
       current_command_interface_ua_node.num_elements = num_elements;
-
-      /* Fallback State Interface Name = State interface with the same NodeId */
-      auto same_nodeid_state_interface_node =
-        [&current_command_interface_ua_node](const auto & state_interface_ua_node)
-      {
-        return (state_interface_ua_node.ua_ns == current_command_interface_ua_node.ua_ns) &&
-               (state_interface_ua_node.ua_identifier ==
-                current_command_interface_ua_node.ua_identifier);
-      };
-      auto it_fallback = find_if(
-        state_interfaces_nodes.begin(), state_interfaces_nodes.end(),
-        same_nodeid_state_interface_node);
-
-      // Found a fallback state interface:
-      if (it_fallback != state_interfaces_nodes.end())
-      {
-        fallback_name = it_fallback->state_interface_names.at(index);
-        // current_command_interface_ua_node.fallback_state_interface_names.emplace(std::make_pair(index,
-        // fallback_name));
-        RCLCPP_INFO(
-          getLogger(), "\tThe following command interface: %s has a fallback state interface: %s.",
-          name.c_str(), fallback_name.c_str());
-      }
 
       /* Find if a command_interface with the same NodeId was already processed */
       auto same_nodeid_command_interface_node =
         [&current_command_interface_ua_node](const auto & command_interface_ua_node)
-      {
-        return (command_interface_ua_node.ua_ns == current_command_interface_ua_node.ua_ns) &&
-               (command_interface_ua_node.ua_identifier ==
-                current_command_interface_ua_node.ua_identifier);
-      };
+      { return (command_interface_ua_node.node_id == current_command_interface_ua_node.node_id); };
+
       auto it = std::find_if(
         command_interfaces_nodes.begin(), command_interfaces_nodes.end(),
         same_nodeid_command_interface_node);
 
-      // OPC UA Array was already processed, only populate command_interface_name and
-      // fallback_name maps
+      ROSInterfaceMapping command_interface_mapping;
+      command_interface_mapping.index = index;
+      command_interface_mapping.name = name;
+      command_interface_mapping.previous_command_value = prev_cmd_val;
+
+      // OPC UA Array was already processed, only populate command_interface_name
       if (it != command_interfaces_nodes.end())
       {
-        it->command_interface_names.emplace(std::make_pair(index, name));
-        it->fallback_state_interface_names.emplace(std::make_pair(index, fallback_name));
+        it->mappings.push_back(command_interface_mapping);
       }
       else
       {
-        // Create a whole interfaceUANode element and add it to the command_interfaces_nodes
-        // vector
-        current_command_interface_ua_node.command_interface_names.emplace(
-          std::make_pair(index, name));
-        current_command_interface_ua_node.fallback_state_interface_names.emplace(
-          std::make_pair(index, fallback_name));
-
-        current_command_interface_ua_node.last_command_values.resize(
-          num_elements, std::numeric_limits<double>::quiet_NaN());
-
+        // Create a new interfaceUANode object and add it to the command_interfaces_nodes vec
+        current_command_interface_ua_node.mappings.push_back(command_interface_mapping);
         command_interfaces_nodes.push_back(current_command_interface_ua_node);
       }
     }
@@ -633,9 +614,8 @@ void OPCUAHardwareInterface::populate_read_items()
   for (const auto & state_node : state_interfaces_nodes)
   {
     opcua::ReadValueId read_value;
-    opcua::NodeId node_id(state_node.ua_ns, state_node.ua_identifier);
 
-    read_value->nodeId = node_id;
+    read_value->nodeId = state_node.node_id;
     read_value->attributeId = UA_ATTRIBUTEID_VALUE;  // (c.f wrapper.md line 94)
     read_items.push_back(read_value);
   }
@@ -689,7 +669,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
   // Turn the results into an opcua::Variant
   for (size_t k = 0; k < results.size(); ++k)
   {
-    const auto & state_interface_ua_node = state_interfaces_nodes[k];
+    const auto & state_node = state_interfaces_nodes[k];
     const auto & read_result = results[k];  // DataType class (c.f types.hpp line 1671)
 
     // Check if there was an issue while reading that specific UA value
@@ -697,7 +677,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
     {
       RCLCPP_ERROR_THROTTLE(
         getLogger(), *get_clock(), 1000, "Bad read status for node (%u, %u)",
-        state_interface_ua_node.ua_ns, state_interface_ua_node.ua_identifier);
+        state_node.node_id.namespaceIndex(), state_node.node_id.identifier<uint32_t>());
 
       any_item_read_failed = true;
       continue;
@@ -705,161 +685,44 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
 
     const opcua::Variant & ua_variant = read_result.value();
 
-    std::string interface_name;
-    double interface_value;
-    std::vector<double> values;
-
-    // OPC UA variable is scalar
-    if (ua_variant.isScalar())
+    switch (state_node.ua_type)
     {
-      interface_value = get_interface_value(state_interface_ua_node.ua_type, ua_variant);
-      interface_name = state_interface_ua_node.state_interface_names.at(0);
-
-      if (std::isnan(interface_value))
-      {
-        RCLCPP_ERROR_THROTTLE(
-          getLogger(), *get_clock(), 1000,
-          "Unhandled or UNKNOWN UA type (%d) for the interface '%s' during read.",
-          static_cast<int>(state_interface_ua_node.ua_type), interface_name.c_str());
+      case UAType::UA_Boolean:
+        any_item_read_failed = process_read_data<bool>(ua_variant, state_node);
+        break;
+      case UAType::UA_Byte:
+        any_item_read_failed = process_read_data<uint8_t>(ua_variant, state_node);
+        break;
+      case UAType::UA_Int16:
+        any_item_read_failed = process_read_data<int16_t>(ua_variant, state_node);
+        break;
+      case UAType::UA_UInt16:
+        any_item_read_failed = process_read_data<uint16_t>(ua_variant, state_node);
+        break;
+      case UAType::UA_Int32:
+        any_item_read_failed = process_read_data<int32_t>(ua_variant, state_node);
+        break;
+      case UAType::UA_UInt32:
+        any_item_read_failed = process_read_data<uint32_t>(ua_variant, state_node);
+        break;
+      case UAType::UA_Int64:
+        any_item_read_failed = process_read_data<int64_t>(ua_variant, state_node);
+        break;
+      case UAType::UA_UInt64:
+        any_item_read_failed = process_read_data<uint64_t>(ua_variant, state_node);
+        break;
+      case UAType::UA_Float:
+        any_item_read_failed = process_read_data<float>(ua_variant, state_node);
+        break;
+      case UAType::UA_Double:
+        any_item_read_failed = process_read_data<double>(ua_variant, state_node);
+        break;
+      default:
+        RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 2000, "Unknown UA type in read.");
         any_item_read_failed = true;
-      }
-      set_state(interface_name, interface_value);
-    }
-
-    // OPC UA variable is array
-    if (ua_variant.isArray())
-    {
-      // const auto &ua_var = ua_variant.get();
-      auto ua_size = ua_variant.arrayLength();
-      const UA_DataType * type = ua_variant.type();
-
-      // Check if the UA number of elements == ROS2 number of elements
-      if (ua_size != state_interface_ua_node.num_elements)
-      {
-        RCLCPP_FATAL(
-          getLogger(),
-          "\tState interface declared for nodeId (%u, %u) number of elements "
-          "does not match the UA "
-          "Array size on the server side.",
-          state_interface_ua_node.ua_ns, state_interface_ua_node.ua_identifier);
-        any_item_read_failed = true;
-      }
-
-      // TODO(habartakh) : Find a more concise way to write to vectors
-
-      if (type == &UA_TYPES[UA_TYPES_BOOLEAN])
-      {
-        auto values_vector = ua_variant.to<std::vector<bool>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-
-      if (type == &UA_TYPES[UA_TYPES_BYTE])
-      {
-        auto values_vector = ua_variant.to<std::vector<uint8_t>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-
-      if (type == &UA_TYPES[UA_TYPES_INT16])
-      {
-        auto values_vector = ua_variant.to<std::vector<int16_t>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-
-      if (type == &UA_TYPES[UA_TYPES_UINT16])
-      {
-        auto values_vector = ua_variant.to<std::vector<uint16_t>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-
-      if (type == &UA_TYPES[UA_TYPES_INT32])
-      {
-        auto values_vector = ua_variant.to<std::vector<int32_t>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-
-      if (type == &UA_TYPES[UA_TYPES_UINT32])
-      {
-        auto values_vector = ua_variant.to<std::vector<uint32_t>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-
-      if (type == &UA_TYPES[UA_TYPES_INT64])
-      {
-        auto values_vector = ua_variant.to<std::vector<int64_t>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-
-      if (type == &UA_TYPES[UA_TYPES_UINT64])
-      {
-        auto values_vector = ua_variant.to<std::vector<uint64_t>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-
-      if (type == &UA_TYPES[UA_TYPES_FLOAT])
-      {
-        auto values_vector = ua_variant.to<std::vector<float>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-
-      if (type == &UA_TYPES[UA_TYPES_DOUBLE])
-      {
-        auto values_vector = ua_variant.to<std::vector<double>>();
-        for (size_t i = 0; i < values_vector.size(); i++)
-        {
-          interface_name = state_interface_ua_node.state_interface_names.at(i);
-          interface_value = static_cast<double>(values_vector[i]);
-          set_state(interface_name, interface_value);
-        }
-      }
-      //! Other types (e.g Unknown) are not treated
+        break;
     }
   }
-
   return any_item_read_failed ? hardware_interface::return_type::ERROR
                               : hardware_interface::return_type::OK;
 }
@@ -883,63 +746,52 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
     return hardware_interface::return_type::OK;
   }
 
-  // Reserve space for write request items
   write_items.clear();
+  // Reserve space for write request items
   write_items.reserve(command_interfaces_nodes.size());
 
-  for (auto & command_interface_ua_node : command_interfaces_nodes)
+  std::vector<double> previous_commands;
+
+  for (auto & command_node : command_interfaces_nodes)
   {
-    opcua::Variant ua_variant;  // will be used to write the value to the OPC UA server
-    std::string command_interface_name = command_interface_ua_node.command_interface_names.at(0);
+    previous_commands.clear();
+    previous_commands.reserve(command_node.num_elements);
 
-    // if the command interface is scalar
-    if (command_interface_ua_node.num_elements == 1)
+    switch (command_node.ua_type)
     {
-      // store the current val and reset the ros-side command value
-      double val = get_command(command_interface_name);
-      set_command(command_interface_name, std::numeric_limits<double>::quiet_NaN());
-
-      if (std::isnan(val))
-      {
+      case UAType::UA_Boolean:
+        any_item_write_failed = process_write_node<bool>(command_node, write_items);
+        break;
+      case UAType::UA_Byte:
+        any_item_write_failed = process_write_node<uint8_t>(command_node, write_items);
+        break;
+      case UAType::UA_Int16:
+        any_item_write_failed = process_write_node<int16_t>(command_node, write_items);
+        break;
+      case UAType::UA_UInt16:
+        any_item_write_failed = process_write_node<uint16_t>(command_node, write_items);
+        break;
+      case UAType::UA_Int32:
+        any_item_write_failed = process_write_node<int32_t>(command_node, write_items);
+        break;
+      case UAType::UA_UInt32:
+        any_item_write_failed = process_write_node<uint32_t>(command_node, write_items);
+        break;
+      case UAType::UA_Int64:
+        any_item_write_failed = process_write_node<int64_t>(command_node, write_items);
+        break;
+      case UAType::UA_UInt64:
+        any_item_write_failed = process_write_node<uint64_t>(command_node, write_items);
+        break;
+      case UAType::UA_Float:
+        any_item_write_failed = process_write_node<float>(command_node, write_items);
+        break;
+      case UAType::UA_Double:
+        any_item_write_failed = process_write_node<double>(command_node, write_items);
+        break;
+      default:
         continue;
-      }
-      if (val == command_interface_ua_node.last_command_values[0])
-      {
-        continue;
-      }
-      command_interface_ua_node.last_command_values[0] = val;
-
-      ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
-
-      RCLCPP_INFO(
-          getLogger(),
-          "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
     }
-    else  // if the command interface is an array
-    {
-      std::vector<double> command_vector = get_command_vector(command_interface_ua_node);
-
-      if (command_vector.empty())
-      {
-        continue;  // Do no send a Write Request
-      }
-      if (command_vector == command_interface_ua_node.last_command_values)
-      {
-        continue;
-      }
-      command_interface_ua_node.last_command_values = command_vector;
-
-      ua_variant = get_array_command_variant(command_interface_ua_node.ua_type, command_vector);
-    }
-
-    // Send a request containing all the OPCUA node Ids we want to write
-    opcua::ua::WriteValue write_value;  // (c.f types.hpp line 1429)
-    write_value.nodeId() =
-      opcua::NodeId(command_interface_ua_node.ua_ns, command_interface_ua_node.ua_identifier);
-    write_value->attributeId = UA_ATTRIBUTEID_VALUE;
-    write_value.value() = opcua::DataValue(ua_variant);
-
-    write_items.push_back(std::move(write_value));
   }
 
   if (!write_items.empty())
@@ -1023,395 +875,189 @@ UAType OPCUAHardwareInterface::strToUAType(const std::string & type_str)
   return UAType::UNKNOWN;
 }
 
-// Helper function that returns the ROS2 interface_value depending on the OPC UA type
-double OPCUAHardwareInterface::get_interface_value(
-  UAType ua_type, const opcua::Variant & ua_variant)
+// returns true if any state interface value was not set properly
+template <typename T>
+bool OPCUAHardwareInterface::process_read_data(
+  const opcua::Variant & ua_variant, const ROSInterfaceUANode & state_node)
 {
-  double interface_value;
-
-  switch (ua_type)
+  // Scalars
+  if (ua_variant.isScalar())
   {
-    case UAType::UA_Boolean:
+    // For scalar interfaces, mappings consists of only one element with index 0
+    if (state_node.mappings.size() > 1 || state_node.mappings[0].index != 0)
     {
-      bool val = ua_variant.to<bool>();
-      interface_value = static_cast<double>(val);
-      break;
+      RCLCPP_ERROR(
+        getLogger(), "\tMismatch: Array State Interface %s is mapped to Scalar OPC UA value.",
+        state_node.mappings[0].name.c_str());
+      return true;
     }
 
-    case UAType::UA_Byte:
-    {
-      uint8_t val = ua_variant.to<uint8_t>();
-      interface_value = static_cast<double>(val);
-      break;
-    }
-
-    case UAType::UA_Int16:
-    {
-      int16_t val = ua_variant.to<int16_t>();
-      interface_value = static_cast<double>(val);
-      break;
-    }
-
-    case UAType::UA_UInt16:
-    {
-      uint16_t val = ua_variant.to<uint16_t>();
-      interface_value = static_cast<double>(val);
-      break;
-    }
-
-    case UAType::UA_Int32:
-    {
-      int32_t val = ua_variant.to<int32_t>();
-      interface_value = static_cast<double>(val);
-      break;
-    }
-
-    case UAType::UA_UInt32:
-    {
-      uint32_t val = ua_variant.to<uint32_t>();
-      interface_value = static_cast<double>(val);
-      break;
-    }
-
-    case UAType::UA_Int64:
-    {
-      int64_t val = ua_variant.to<int64_t>();
-      interface_value = static_cast<double>(val);
-      break;
-    }
-
-    case UAType::UA_UInt64:
-    {
-      uint64_t val = ua_variant.to<uint64_t>();
-      interface_value = static_cast<double>(val);
-      break;
-    }
-
-    case UAType::UA_Float:
-    {
-      float val = ua_variant.to<float>();
-      interface_value = static_cast<double>(val);
-      break;
-    }
-
-    case UAType::UA_Double:
-    {
-      interface_value = ua_variant.to<double>();
-      break;
-    }
-
-    case UAType::UNKNOWN:
-    default:
-      interface_value = std::numeric_limits<double>::quiet_NaN();
-      break;
+    // Set the interface with the value read from the UA server
+    T val = ua_variant.to<T>();
+    set_state(state_node.mappings[0].name, static_cast<double>(val));
+    return false;
   }
-  return interface_value;
+
+  // Arrays
+  if (ua_variant.isArray())
+  {
+    auto ua_size = ua_variant.arrayLength();
+
+    // Check first if the UA number of elements == ROS2 number of elements
+    if (ua_size != state_node.num_elements)
+    {
+      RCLCPP_FATAL_THROTTLE(
+        getLogger(), *get_clock(), 1000,
+        "\tNumber of State Interfaces mapped to node ID (%u, %u) does not match the UA "
+        "Array size on the server "
+        "side.",
+        state_node.node_id.namespaceIndex(), state_node.node_id.identifier<uint32_t>());
+      return true;
+    }
+
+    auto values = ua_variant.to<std::vector<T>>();
+
+    // Iterate only active mappings
+    for (const auto & map : state_node.mappings)
+    {
+      // Make sure that the index stays within UA array bounds
+      if (map.index < values.size())
+      {
+        set_state(map.name, static_cast<double>(values[map.index]));
+      }
+      else
+      {
+        RCLCPP_ERROR_THROTTLE(
+          getLogger(), *get_clock(), 1000,
+          "\tState Interface %s mapping index %zu is out of bounds. No matching UA array index "
+          "found.",
+          map.name.c_str(), map.index);
+      }
+    }
+  }
+  return false;
 }
 
-// If an interface refers to an array, get all the commands and store them inside a vector
-std::vector<double> OPCUAHardwareInterface::get_command_vector(
-  const CommandInterfaceUANode & command_ua_node)
+template <typename T>
+bool OPCUAHardwareInterface::process_write_node(
+  ROSInterfaceUANode & node, std::vector<opcua::ua::WriteValue> & write_items_vector)
 {
-  std::vector<double> command_vector;
-  double current_command;
-  std::string current_command_interface_name;
-  std::string current_fallback_interface_name;
+  // prepare the buffer
+  std::vector<double> commands_to_send(node.num_elements, std::numeric_limits<double>::quiet_NaN());
+  bool command_changed = false;
 
-  for (size_t i = 0; i < command_ua_node.num_elements; ++i)
+  // fill the buffer
+  for (auto & map : node.mappings)
   {
-    current_command_interface_name = command_ua_node.command_interface_names.at(i);
-    current_fallback_interface_name = command_ua_node.fallback_state_interface_names.at(i);
-
-    current_command = get_command(current_command_interface_name);
-
-    set_command(current_command_interface_name, std::numeric_limits<double>::quiet_NaN());
-
-    if (std::isnan(current_command))
+    if (map.index >= commands_to_send.size())
     {
-      return command_vector; // if any command in an array is NaN, skip writing this cycle
+      RCLCPP_WARN_THROTTLE(
+        getLogger(), *get_clock(), 1000,
+        "\tCommand interface %s index %zu exceeds number of elements declared in URDF.",
+        map.name.c_str(), map.index);
+      continue;
     }
-    command_vector.push_back(current_command);
-  }
-  return command_vector;
-}
 
-// The UAVariant contains the data that will be sent to the server as an write request
-opcua::Variant OPCUAHardwareInterface::get_scalar_command_variant(UAType ua_type, double val)
-{
+    double val = get_command(map.name);
+    // Check if a new command value was sent to the interface
+    if (val != map.previous_command_value)
+    {
+      command_changed = true;
+      map.previous_command_value = val;
+    }
+    commands_to_send[map.index] = val;
+  }
+
+  // If the command is still the same as the previous cycle, we don't write
+  if (!command_changed)
+  {
+    return false;
+  }
+
+  // If ANY element in the array is NaN, we abort the entire write.
+  // This is because we cannot partial-write without `indexRange`, and writing NaNs (which cast to
+  // 0) would corrupt uncommanded indices.
+  // TODO(habartakh): Implement OPC UA `indexRange` support to allow sparse/partial updates.
+  /// This is an extension for later, maybe
+  for (double val : commands_to_send)
+  {
+    if (std::isnan(val))
+    {
+      return true;  // write item failure
+    }
+  }
+
   opcua::Variant ua_variant;
-  switch (ua_type)
+
+  // scalar
+  if (node.num_elements == 1)
   {
-    case UAType::UA_Boolean:
+    ua_variant = opcua::Variant(static_cast<T>(commands_to_send[0]));
+  }
+  // array
+  else
+  {
+    std::vector<T> ua_vals;
+    ua_vals.reserve(commands_to_send.size());
+    for (double v : commands_to_send)
     {
-      bool ua_value = static_cast<bool>(val);
-      ua_variant = ua_value;
-      break;
+      ua_vals.push_back(static_cast<T>(v));
     }
-
-    case UAType::UA_Byte:
-    {
-      uint8_t ua_value = static_cast<uint8_t>(val);
-      ua_variant = ua_value;
-      break;
-    }
-
-    case UAType::UA_Int16:
-    {
-      int16_t ua_value = static_cast<int16_t>(val);
-      ua_variant = ua_value;
-      break;
-    }
-
-    case UAType::UA_UInt16:
-    {
-      uint16_t ua_value = static_cast<uint16_t>(val);
-      ua_variant = ua_value;
-      break;
-    }
-
-    case UAType::UA_Int32:
-    {
-      int32_t ua_value = static_cast<int32_t>(val);
-      ua_variant = ua_value;
-      break;
-    }
-
-    case UAType::UA_UInt32:
-    {
-      uint32_t ua_value = static_cast<uint32_t>(val);
-      ua_variant = ua_value;
-      break;
-    }
-
-    case UAType::UA_Int64:
-    {
-      int64_t ua_value = static_cast<int64_t>(val);
-      ua_variant = ua_value;
-      break;
-    }
-
-    case UAType::UA_UInt64:
-    {
-      uint64_t ua_value = static_cast<uint64_t>(val);
-      ua_variant = ua_value;
-      break;
-    }
-
-    case UAType::UA_Float:
-    {
-      float ua_value = static_cast<float>(val);
-      ua_variant = ua_value;
-      break;
-    }
-
-    case UAType::UA_Double:
-    {
-      double ua_value = val;
-      ua_variant = ua_value;
-      break;
-    }
-
-    case UAType::UNKNOWN:
-    default:
-      RCLCPP_ERROR_THROTTLE(
-        getLogger(), *get_clock(), 1000,
-        "Unhandled or UNKNOWN UA type for the interface during write.");
-
-      // TODO(habartakh): Add a flag to return the error inside write
-      break;
+    ua_variant = opcua::Variant(ua_vals);
   }
 
-  return ua_variant;
+  // Fill write_items_vec with all the node IDs and corresponding data we want to write
+  opcua::ua::WriteValue wv;
+  wv.nodeId() = node.node_id;
+  wv->attributeId = UA_ATTRIBUTEID_VALUE;
+  wv.value() = opcua::DataValue(ua_variant);
+  write_items_vector.push_back(std::move(wv));
+
+  return false;  // no write items failure
 }
 
-opcua::Variant OPCUAHardwareInterface::get_array_command_variant(
-  UAType ua_type, std::vector<double> & command_array)
-{
-  opcua::Variant command_variant;
+// Explicit instantiations for template functions
+template bool OPCUAHardwareInterface::process_read_data<bool>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
+template bool OPCUAHardwareInterface::process_read_data<uint8_t>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
+template bool OPCUAHardwareInterface::process_read_data<int16_t>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
+template bool OPCUAHardwareInterface::process_read_data<uint16_t>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
+template bool OPCUAHardwareInterface::process_read_data<int32_t>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
+template bool OPCUAHardwareInterface::process_read_data<uint32_t>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
+template bool OPCUAHardwareInterface::process_read_data<int64_t>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
+template bool OPCUAHardwareInterface::process_read_data<uint64_t>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
+template bool OPCUAHardwareInterface::process_read_data<float>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
+template bool OPCUAHardwareInterface::process_read_data<double>(
+  const opcua::Variant &, const ROSInterfaceUANode &);
 
-  switch (ua_type)
-  {
-    case UAType::UA_Boolean:
-    {
-      std::vector<bool> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<bool>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UA_Byte:
-    {
-      std::vector<uint8_t> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<uint8_t>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UA_Int16:
-    {
-      std::vector<int16_t> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<int16_t>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UA_UInt16:
-    {
-      std::vector<uint16_t> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<uint16_t>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UA_Int32:
-    {
-      std::vector<int32_t> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<int32_t>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UA_UInt32:
-    {
-      std::vector<uint32_t> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<uint32_t>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UA_Int64:
-    {
-      std::vector<int64_t> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<int64_t>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UA_UInt64:
-    {
-      std::vector<uint64_t> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<uint64_t>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UA_Float:
-    {
-      std::vector<float> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<float>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UA_Double:
-    {
-      std::vector<double> ua_vals;
-      ua_vals.reserve(command_array.size());
-
-      for (double command_value : command_array)
-      {
-        if (!std::isnan(command_value))
-        {
-          ua_vals.push_back(static_cast<double>(command_value));
-        }
-      }
-
-      command_variant = ua_vals;
-      break;
-    }
-
-    case UAType::UNKNOWN:
-    default:
-      RCLCPP_ERROR_THROTTLE(
-        getLogger(), *get_clock(), 1000,
-        "Unhandled or UNKNOWN UA type for the interface during write.");
-      // TODO(habartakh): Add a flag to return an error inside the write function
-      break;
-  }
-
-  return command_variant;
-}
+template bool OPCUAHardwareInterface::process_write_node<bool>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+template bool OPCUAHardwareInterface::process_write_node<uint8_t>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+template bool OPCUAHardwareInterface::process_write_node<int16_t>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+template bool OPCUAHardwareInterface::process_write_node<uint16_t>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+template bool OPCUAHardwareInterface::process_write_node<int32_t>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+template bool OPCUAHardwareInterface::process_write_node<uint32_t>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+template bool OPCUAHardwareInterface::process_write_node<int64_t>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+template bool OPCUAHardwareInterface::process_write_node<uint64_t>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+template bool OPCUAHardwareInterface::process_write_node<float>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
+template bool OPCUAHardwareInterface::process_write_node<double>(
+  ROSInterfaceUANode &, std::vector<opcua::ua::WriteValue> &);
 
 }  // namespace opcua_hardware_interface
 

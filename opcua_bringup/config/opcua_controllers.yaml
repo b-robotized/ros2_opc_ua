@@ -15,6 +15,7 @@ opcua_controller:
           - commandPos_0
           - commandPos_1
           - my_integer_interface
+          - buttonArray_2
 
     state_interfaces:
       robot_sensor:
@@ -24,3 +25,4 @@ opcua_controller:
           - currentPos_0
           - currentPos_1
           - my_integer_interface
+          - buttonArray_2
