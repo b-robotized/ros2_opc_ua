@@ -718,7 +718,11 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         any_item_read_failed = process_read_data<double>(ua_variant, state_node);
         break;
       default:
-        RCLCPP_ERROR_THROTTLE(getLogger(), *get_clock(), 2000, "Unknown UA type in read.");
+        RCLCPP_ERROR_THROTTLE(
+          getLogger(), *get_clock(), 1000,
+          "Unknown UA type for node (%u, %u). Check "
+          "your URDF for more details.",
+          state_node.node_id.namespaceIndex(), state_node.node_id.identifier<uint32_t>());
         any_item_read_failed = true;
         break;
     }
@@ -908,7 +912,7 @@ bool OPCUAHardwareInterface::process_read_data(
     {
       RCLCPP_FATAL_THROTTLE(
         getLogger(), *get_clock(), 1000,
-        "\tNumber of State Interfaces mapped to node ID (%u, %u) does not match the UA "
+        "\tNumber of State Interfaces mapped to node (%u, %u) does not match the UA "
         "Array size on the server "
         "side.",
         state_node.node_id.namespaceIndex(), state_node.node_id.identifier<uint32_t>());
