@@ -134,6 +134,19 @@ private:
   opcua::ByteString client_cert_;
   opcua::ByteString client_key_;
   opcua::ByteString ca_cert_;
+
+  const opcua::ua::EndpointDescription * selectedEndpoint = nullptr;
+  const opcua::ua::UserTokenPolicy * selectedTokenPolicy = nullptr;
+
+  void process_client_certificates(
+    std::string & ca_cert_path, std::string & cert_path, std::string & key_path,
+    std::vector<opcua::ua::EndpointDescription> & endpoints);
+
+  bool select_endpoint(
+    std::string & cert_path, std::string & username,
+    std::vector<opcua::ua::EndpointDescription> & endpoints);
+
+  void configure_client(std::string & username, std::string & password);
 };
 
 }  // namespace opcua_hardware_interface

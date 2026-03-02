@@ -178,6 +178,30 @@ inline CertificateInfo parseCertificate(const opcua::ByteString & cert_data)
   return info;
 }
 
+// Helper to read file content
+static opcua::ByteString readFile(const std::string & path)
+{
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file)
+  {
+    return opcua::ByteString{};
+  }
+  std::streamsize size = file.tellg();
+  file.seekg(0, std::ios::beg);
+
+  if (size <= 0)
+  {
+    return opcua::ByteString{};
+  }
+
+  std::vector<char> buffer(static_cast<size_t>(size));
+  if (file.read(buffer.data(), size))
+  {
+    return opcua::ByteString(std::string_view(buffer.data(), static_cast<size_t>(size)));
+  }
+  return opcua::ByteString{};
+}
+
 std::string toString(opcua::ApplicationType applicationType)
 {
   switch (applicationType)
