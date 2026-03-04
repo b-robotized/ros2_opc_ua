@@ -76,8 +76,9 @@ bool OPCUAHardwareInterface::configure_ua_client()
       params.count("security.ca_certificate_path") ? params.at("security.ca_certificate_path") : "";
 
     // Set Application URI and Name once (used throughout)
-    app_uri_ = "urn:ros2_opc_ua.client.hw_itf:" + info_.name;
-    app_name_ = "ros2_opc_ua client - ros2_control Hardware Interface - " + info_.name;
+    ua_client.ua_config.app_uri_ = "urn:ros2_opc_ua.client.hw_itf:" + info_.name;
+    ua_client.ua_config.app_name_ =
+      "ros2_opc_ua client - ros2_control Hardware Interface - " + info_.name;
 
     // Validate the format of the Ip Address using regular expressions
     const std::regex pattern("^((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\\.(?!$)|$)){4}$");
@@ -90,11 +91,11 @@ bool OPCUAHardwareInterface::configure_ua_client()
     // Set the OPC Server URL
     endpoint_url_ = "opc.tcp://" + ip_address + ":" + port_number;
 
-    const auto servers = client.findServers(endpoint_url_);
+    const auto servers = ua_client.client.findServers(endpoint_url_);
     opcua_helpers::print_servers_info(servers, getLogger());
 
     // Get Endpoints to select the best one
-    auto endpoints = client.getEndpoints(endpoint_url_);
+    auto endpoints = ua_client.client.getEndpoints(endpoint_url_);
     if (endpoints.empty())
     {
       RCLCPP_FATAL(getLogger(), "No endpoints found at %s", endpoint_url_.c_str());
@@ -102,24 +103,26 @@ bool OPCUAHardwareInterface::configure_ua_client()
     }
 
     // Process client certificates
-    process_client_certificates(ca_cert_path, cert_path, key_path, endpoints);
+    ua_client.ua_config.process_client_certificates(
+      ua_client.client, info_.name, ca_cert_path, cert_path, key_path, endpoints, getLogger());
 
     // Select the endpoint with the highest security level compatible with the client
-    bool endpoint_found = select_endpoint(cert_path, username, endpoints);
+    bool endpoint_found =
+      ua_client.ua_config.select_endpoint(cert_path, username, endpoints, getLogger());
     if (!endpoint_found)
     {
       return false;
     }
 
     // Configure client
-    configure_client(username, password);
+    ua_client.ua_config.configure_client(ua_client.client, username, password, getLogger());
 
     // Connect to the server using the credentials from the URDF
     RCLCPP_INFO(getLogger(), "\tConnection to the Endpoint URL: %s...", endpoint_url_.c_str());
-    client.connect(endpoint_url_);
+    ua_client.client.connect(endpoint_url_);
 
     // Connection failed
-    if (!client.isConnected())
+    if (!ua_client.client.isConnected())
     {
       RCLCPP_FATAL(getLogger(), "\tCould not connect to the server.");
       return false;
@@ -151,295 +154,6 @@ hardware_interface::CallbackReturn OPCUAHardwareInterface::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   return CallbackReturn::SUCCESS;
-}
-
-void OPCUAHardwareInterface::process_client_certificates(
-  std::string & ca_cert_path, std::string & cert_path, std::string & key_path,
-  std::vector<opcua::ua::EndpointDescription> & endpoints)
-{
-  // Only process certificates if we have endpoints with secure connections
-  bool has_secure_endpoints = false;
-  for (const auto & endpoint : endpoints)
-  {
-    if (
-      endpoint.securityMode() == opcua::MessageSecurityMode::Sign ||
-      endpoint.securityMode() == opcua::MessageSecurityMode::SignAndEncrypt)
-    {
-      has_secure_endpoints = true;
-      break;
-    }
-  }
-
-  has_client_certificate_ = false;
-  // Skip certificate handling if no secure endpoints exist
-  if (has_secure_endpoints)
-  {
-    // Try loading from file first
-    if (!cert_path.empty() && !key_path.empty())
-    {
-      client_cert_ = opcua_helpers::readFile(cert_path);
-      client_key_ = opcua_helpers::readFile(key_path);
-      if (!client_cert_.empty() && !client_key_.empty())
-      {
-        RCLCPP_INFO(getLogger(), "Loaded client certificate from %s", cert_path.c_str());
-      }
-      else
-      {
-        RCLCPP_WARN(
-          getLogger(), "Failed to read client certificate/key files from %s", cert_path.c_str());
-      }
-    }
-
-    // Try loading CA certificate for server verification
-    if (!ca_cert_path.empty())
-    {
-      ca_cert_ = opcua_helpers::readFile(ca_cert_path);
-      if (!ca_cert_.empty())
-      {
-        RCLCPP_INFO(
-          getLogger(), "Loaded CA certificate from %s (%zu bytes)", ca_cert_path.c_str(),
-          ca_cert_.length());
-      }
-      else
-      {
-        RCLCPP_WARN(
-          getLogger(), "Failed to read CA certificate file from %s", ca_cert_path.c_str());
-      }
-    }
-
-    // If no certificate loaded, generate one
-    if (client_cert_.empty() || client_key_.empty())
-    {
-      RCLCPP_INFO(getLogger(), "Generating self-signed client certificate...");
-      try
-      {
-        std::string cn_full = "CN=" + info_.name;
-        std::string dns_full = "DNS:localhost";
-        std::string uri_full = "URI:" + app_uri_;
-
-        std::vector<opcua::String> subject = {opcua::String(cn_full), opcua::String("O=ROS 2")};
-        std::vector<opcua::String> subjectAltName = {
-          opcua::String(dns_full), opcua::String(uri_full)};
-
-        auto result = opcua::createCertificate(subject, subjectAltName);
-        client_cert_ = std::move(result.certificate);
-        client_key_ = std::move(result.privateKey);
-        RCLCPP_INFO(getLogger(), "Generated client certificate (%zu bytes)", client_cert_.length());
-      }
-      catch (const std::exception & e)
-      {
-        RCLCPP_ERROR(getLogger(), "Client certificate generation failed: %s.", e.what());
-      }
-    }
-
-    // Set encryption if we have a certificate
-    if (!client_cert_.empty() && !client_key_.empty())
-    {
-      // Prepare trustList and revocationList for UA_ClientConfig_setDefaultEncryption
-      const UA_ByteString * trustList = nullptr;
-      size_t trustListSize = 0;
-
-      if (!ca_cert_.empty())
-      {
-        trustList = ca_cert_.handle();
-        trustListSize = 1;
-        RCLCPP_INFO(getLogger(), "Using CA certificate for server verification (trustList)");
-      }
-
-      UA_StatusCode retval = UA_ClientConfig_setDefaultEncryption(
-        client.config().handle(), *client_cert_.handle(), *client_key_.handle(), trustList,
-        trustListSize, nullptr, 0);
-
-      if (retval != UA_STATUSCODE_GOOD)
-      {
-        RCLCPP_ERROR(
-          getLogger(), "Failed to set default encryption: %s", UA_StatusCode_name(retval));
-      }
-      else
-      {
-        has_client_certificate_ = true;
-        RCLCPP_INFO(getLogger(), "Client encryption configured successfully!");
-
-        // Configure certificate verification based on CA availability
-        if (!ca_cert_.empty())
-        {
-          // CA certificate is provided, always enable verification
-          RCLCPP_INFO(getLogger(), "Certificate verification ENABLED with CA trustlist.");
-        }
-        else
-        {
-          // No CA certificate provided - disable verification (trust all certificates)
-          client.config()->certificateVerification.clear = +[](UA_CertificateVerification *) {};
-          client.config()->certificateVerification.verifyCertificate =
-            +[](const UA_CertificateVerification *, const UA_ByteString *) -> UA_StatusCode
-          { return UA_STATUSCODE_GOOD; };
-
-          RCLCPP_WARN(
-            getLogger(),
-            "Certificate verification DISABLED (no CA certificate provided, trust all). "
-            "This is INSECURE and should only be used for testing! "
-            "Provide 'security.ca_certificate_path' to enable verification.");
-        }
-      }
-    }
-    else
-    {
-      RCLCPP_WARN(
-        getLogger(), "No client certificate available. Will only use None security mode.");
-    }
-  }
-  else
-  {
-    RCLCPP_INFO(getLogger(), "No secure endpoints found. Skipping certificate configuration.");
-  }
-}
-
-bool OPCUAHardwareInterface::select_endpoint(
-  std::string & cert_path, std::string & username,
-  std::vector<opcua::ua::EndpointDescription> & endpoints)
-{
-  // Simplified Selection Logic: Just use Security Level (highest = best)
-  uint8_t bestSecurityLevel = 0;
-
-  RCLCPP_INFO(getLogger(), "Username is: %s", username.c_str());
-
-  for (const auto & endpoint : endpoints)
-  {
-    // Skip secure endpoints if we don't have a client certificate
-    if (
-      !has_client_certificate_ &&
-      (endpoint.securityMode() == opcua::MessageSecurityMode::Sign ||
-       endpoint.securityMode() == opcua::MessageSecurityMode::SignAndEncrypt))
-    {
-      RCLCPP_INFO(getLogger(), "Skipped secure endpoints as we don't have a client certificate");
-      continue;  // Skip this endpoint
-    }
-
-    // Check if we can authenticate with this endpoint
-    const opcua::ua::UserTokenPolicy * candidatePolicy = nullptr;
-
-    for (const auto & tokenPolicy : endpoint.userIdentityTokens())
-    {
-      if (!username.empty())
-      {
-        RCLCPP_INFO(getLogger(), "if (!username.empty())");
-
-        if (tokenPolicy.tokenType() == opcua::UserTokenType::Username)
-        {
-          RCLCPP_INFO(getLogger(), "tokenPolicy.tokenType() == opcua::UserTokenType::Username");
-          candidatePolicy = &tokenPolicy;
-          break;
-        }
-      }
-      else if (!cert_path.empty())
-      {
-        if (tokenPolicy.tokenType() == opcua::UserTokenType::Certificate)
-        {
-          candidatePolicy = &tokenPolicy;
-          break;
-        }
-      }
-      else
-      {
-        if (tokenPolicy.tokenType() == opcua::UserTokenType::Anonymous)
-        {
-          candidatePolicy = &tokenPolicy;
-          break;
-        }
-      }
-    }
-
-    // Select endpoint with highest security level
-    if (candidatePolicy && endpoint.securityLevel() >= bestSecurityLevel)
-    {
-      bestSecurityLevel = endpoint.securityLevel();
-      selectedEndpoint = &endpoint;
-      selectedTokenPolicy = candidatePolicy;
-    }
-  }
-
-  if (!selectedEndpoint)
-  {
-    RCLCPP_INFO(getLogger(), "!selectedEndpoint");
-  }
-
-  if (!selectedTokenPolicy)
-  {
-    RCLCPP_INFO(getLogger(), "!selectedTokenPolicy");
-  }
-
-  if (!selectedEndpoint || !selectedTokenPolicy)
-  {
-    RCLCPP_FATAL(getLogger(), "Could not find a suitable endpoint for provided credentials.");
-    return false;
-  }
-
-  return true;
-}
-
-void OPCUAHardwareInterface::configure_client(std::string & username, std::string & password)
-{
-  // Configure Client
-  client.config()->securityMode =
-    static_cast<UA_MessageSecurityMode>(selectedEndpoint->securityMode());
-  UA_String_clear(&client.config()->securityPolicyUri);
-  UA_String_copy(
-    selectedEndpoint->securityPolicyUri().handle(), &client.config()->securityPolicyUri);
-
-  // Set Application URI and Name using member variables (must match certificate SAN)
-  UA_String_clear(&client.config()->clientDescription.applicationUri);
-  client.config()->clientDescription.applicationUri = UA_STRING_ALLOC(app_uri_.c_str());
-  UA_LocalizedText_clear(&client.config()->clientDescription.applicationName);
-  client.config()->clientDescription.applicationName =
-    UA_LOCALIZEDTEXT_ALLOC("en", app_name_.c_str());
-
-  RCLCPP_INFO(getLogger(), "Client Application URI set to: %s", app_uri_.c_str());
-
-  // Set User Identity
-  if (selectedTokenPolicy->tokenType() == opcua::UserTokenType::Username)
-  {
-    UA_UserNameIdentityToken * identityToken = UA_UserNameIdentityToken_new();
-    identityToken->userName = UA_STRING_ALLOC(username.c_str());
-    identityToken->password = UA_STRING_ALLOC(password.c_str());
-    // Use the policyId from the server
-    UA_String_copy(selectedTokenPolicy->policyId().handle(), &identityToken->policyId);
-
-    UA_ExtensionObject_clear(&client.config()->userIdentityToken);
-    UA_ExtensionObject_setValue(
-      &client.config()->userIdentityToken, identityToken,
-      &UA_TYPES[UA_TYPES_USERNAMEIDENTITYTOKEN]);
-  }
-  else if (
-    has_client_certificate_ &&
-    selectedTokenPolicy->tokenType() == opcua::UserTokenType::Certificate)
-  {
-    UA_X509IdentityToken * identityToken = UA_X509IdentityToken_new();
-    UA_String_copy(selectedTokenPolicy->policyId().handle(), &identityToken->policyId);
-
-    // Pass the loaded certificate data if available
-    if (!client_cert_.empty())
-    {
-      UA_ByteString_copy(client_cert_.handle(), &identityToken->certificateData);
-    }
-
-    UA_ExtensionObject_clear(&client.config()->userIdentityToken);
-    UA_ExtensionObject_setValue(
-      &client.config()->userIdentityToken, identityToken, &UA_TYPES[UA_TYPES_X509IDENTITYTOKEN]);
-  }
-  else
-  {
-    // Anonymous
-    UA_AnonymousIdentityToken * identityToken = UA_AnonymousIdentityToken_new();
-    UA_String_copy(selectedTokenPolicy->policyId().handle(), &identityToken->policyId);
-    UA_ExtensionObject_clear(&client.config()->userIdentityToken);
-    UA_ExtensionObject_setValue(
-      &client.config()->userIdentityToken, identityToken,
-      &UA_TYPES[UA_TYPES_ANONYMOUSIDENTITYTOKEN]);
-  }
-
-  // Print Client Configuration with security details
-  opcua_helpers::print_client_info(
-    client, getLogger(), client_cert_, client_key_, ca_cert_, selectedEndpoint->securityLevel());
 }
 
 void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
@@ -645,7 +359,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
   bool any_item_read_failed = false;
 
   // Client lost connection to the UA server
-  if (!client.isConnected())
+  if (!ua_client.client.isConnected())
   {
     RCLCPP_ERROR(
       getLogger(), "Hardware interface lost connection to the server during read operation.");
@@ -665,7 +379,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
 
   try
   {
-    response = opcua::services::read(client, request);  // (c.f attribute.hpp line 45)
+    response = opcua::services::read(ua_client.client, request);  // (c.f attribute.hpp line 45)
   }
   catch (const std::exception & e)
   {
@@ -755,7 +469,7 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
   bool any_item_write_failed = false;
 
   // Client lost connection to the UA server
-  if (!client.isConnected())
+  if (!ua_client.client.isConnected())
   {
     RCLCPP_ERROR(
       getLogger(), "Hardware interface lost connection to the server during write operation.");
@@ -820,7 +534,7 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
   {
     // Make a single global request to write items
     opcua::ua::WriteRequest request{opcua::RequestHeader(), write_items};
-    opcua::ua::WriteResponse response = opcua::services::write(client, request);
+    opcua::ua::WriteResponse response = opcua::services::write(ua_client.client, request);
 
     const auto & results = response.results();
     for (size_t i = 0; i < results.size(); ++i)
@@ -846,7 +560,7 @@ hardware_interface::CallbackReturn OPCUAHardwareInterface::on_shutdown(
   RCLCPP_INFO(getLogger(), "Disconnecting OPC UA client...");
 
   // Disconnect and close the connection to the server.
-  client.disconnect();
+  ua_client.client.disconnect();
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
