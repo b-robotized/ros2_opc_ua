@@ -754,63 +754,46 @@ int main(int argc, char ** argv)
   // Add a variable node to the Objects node
   opcua::Node parentNode{server, opcua::ObjectId::ObjectsFolder};
 
-  opcua::Node myIntegerNode = parentNode.addVariable(
-    {1, 1},                      // nodeId (ns=1 ; s=1)
-    "The Answer",                // browse name
-    opcua::VariableAttributes{}  // attributes (c.f node.hpp line 156)
-      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
-      .setDisplayName({"en-US", "The Answer"})
-      .setDescription({"en-US", "Answer to the Ultimate Question of Life"})
-      .setDataType<int>()
-      .setValueRank(opcua::ValueRank::Scalar)
-      .setValue(opcua::Variant{42}));
-
-  opcua::Node currentPosNode = parentNode.addVariable(
-    {1, 10}, "Current Position Array",
+  opcua::Node redLightNode = parentNode.addVariable(
+    {1, 101}, "Red",
     opcua::VariableAttributes{}
       .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
-      .setDisplayName({"en-US", "Array of current position"})
-      .setDataType(DataTypeId::Float)
-      .setArrayDimensions({0})                       // single dimension but unknown in size
-      .setValueRank(opcua::ValueRank::OneDimension)  // (c.f common.hpp line 157)
-      .setValue(opcua::Variant{std::vector<float>{0.0f, 0.0f}}));
-
-  // std::bool is not supported, UA_Boolean is uint8_t
-  opcua::Node commandPosNode = parentNode.addVariable(
-    {1, 11}, "Command Position Array",
-    opcua::VariableAttributes{}
-      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
-      .setDisplayName({"en-US", "Array of boolean command position"})
+      .setDisplayName({"en-US", "Red"})
+      .setDescription({"en-US", "Red semaphore light state"})
       .setDataType(DataTypeId::Boolean)
-      .setArrayDimensions({0})                       //! single dimension but unknown in size
-      .setValueRank(opcua::ValueRank::OneDimension)  //! (c.f common.hpp line 157)
-      .setValue(opcua::Variant{std::vector<UA_Boolean>{UA_FALSE, UA_TRUE}}));
+      .setValueRank(opcua::ValueRank::Scalar)
+      .setValue(opcua::Variant{false}));
 
-  // Add a callback fucnction to simulate change over time
-  size_t counter = 0;
-  const double interval = 500;  // milliseconds
-  const opcua::CallbackId id1 = opcua::addRepeatedCallback(
-    server,
-    [&]
-    {
-      const auto commandPos = commandPosNode.readValue().to<std::vector<bool>>();
-      auto currentPos = currentPosNode.readValue().to<std::vector<float>>();
-      ++counter;
-      const float angle = static_cast<float>(counter) * 0.01f;
-      currentPos[0] = commandPos[0] * std::sin(angle);
-      currentPos[1] = commandPos[1] * std::cos(angle);
+  opcua::Node greenLightNode = parentNode.addVariable(
+    {1, 102}, "Green",
+    opcua::VariableAttributes{}
+      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+      .setDisplayName({"en-US", "Green"})
+      .setDescription({"en-US", "Green semaphore light state"})
+      .setDataType(DataTypeId::Boolean)
+      .setValueRank(opcua::ValueRank::Scalar)
+      .setValue(opcua::Variant{false}));
 
-      std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
-                << std::endl;
-      std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]"
-                << std::endl;
+  opcua::Node yellowLightNode = parentNode.addVariable(
+    {1, 103}, "Yellow",
+    opcua::VariableAttributes{}
+      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+      .setDisplayName({"en-US", "Yellow"})
+      .setDescription({"en-US", "Yellow semaphore light state"})
+      .setDataType(DataTypeId::Boolean)
+      .setValueRank(opcua::ValueRank::Scalar)
+      .setValue(opcua::Variant{false}));
 
-      currentPosNode.writeValue(opcua::Variant(currentPos));
-
-      auto answerVal = myIntegerNode.readValue();
-      std::cout << "The answer is: " << answerVal.to<int>() << std::endl;
-    },
-    interval);
+  // --- JTC Scaling ---
+  opcua::Node jtcScalingNode = parentNode.addVariable(
+    {1, 104}, "JTC Scaling",
+    opcua::VariableAttributes{}
+      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+      .setDisplayName({"en-US", "JTC Scaling"})
+      .setDescription({"en-US", "JTC Scaling multiplier"})
+      .setDataType(DataTypeId::Double)
+      .setValueRank(opcua::ValueRank::Scalar)
+      .setValue(opcua::Variant{1.0})); // Set an appropriate default like 1.0
 
   // Print detailed endpoint configuration
   print_server_endpoints(UA_Server_getConfig(server.handle()), node->get_logger());
@@ -926,6 +909,5 @@ int main(int argc, char ** argv)
 
   RCLCPP_INFO(node->get_logger(), "Stopping server...");
 
-  opcua::removeCallback(server, id1);
   rclcpp::shutdown();
 }

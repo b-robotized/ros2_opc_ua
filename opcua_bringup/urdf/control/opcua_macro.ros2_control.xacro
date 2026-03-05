@@ -11,7 +11,10 @@
                 client_key_path:=''
                 ca_cert_path:=''">
 
-        <ros2_control name="${name}" type="system">
+        <ros2_control name="${name}" type="system" is_async="true" rw_rate="5">
+            <properties>
+                <async scheduling_policy="synchronized" print_warnings="false" thread_priority="30"/>
+            </properties>
             <hardware>
                 <xacro:if value="${mock_hardware}">
                     <plugin>mock_components/GenericSystem</plugin>
@@ -35,31 +38,15 @@
                 </xacro:unless>
             </hardware>
 
-            <!-- These interfaces can be declared for any component - joint, gpio or sensor -->
-
-            <!-- IMPORTANT With the current implementation the indexes of same Array SHOULD be ordered in an ascending manner and declared consecutively -->
-            <sensor name="robot_sensor">
-                <xacro:state_interface_OPCUA name="my_integer_interface" data_type="double" ua_type="UA_Int32" ua_ns="1" ua_identifier="1"/>
-                <xacro:state_interface_OPCUA name="currentPos_0" data_type="double" ua_type="UA_Float" ua_ns="1" ua_identifier="10" n_elements="2" index="0"/>
-                <xacro:state_interface_OPCUA name="currentPos_1" data_type="double" ua_type="UA_Float" ua_ns="1" ua_identifier="10" n_elements="2" index="1"/>
-
-                <xacro:state_interface_OPCUA name="commandPos_0" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="0"/>
-                <xacro:state_interface_OPCUA name="commandPos_1" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="1"/>
-            </sensor>
-
-            <gpio name="robot_command">
-                <xacro:command_interface_OPCUA name="my_integer_interface" data_type="double" ua_type="UA_Int32" ua_ns="1" ua_identifier="1" initial_value="42.0"/>
-                 <xacro:command_interface_OPCUA name="commandPos_0" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="0" initial_value="0"/>
-                <xacro:command_interface_OPCUA name="commandPos_1" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="11" n_elements="2" index="1" initial_value="1"/>
+            <gpio name="opcua_jtc">
+                <xacro:state_interface_OPCUA name="scaling" data_type="double" ua_type="UA_Double" ua_ns="1" ua_identifier="104"/>
             </gpio>
 
-            <!-- <gpio name="gripper">
-                <xacro:command_interface_OPCUA name="close" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="19" initial_value="true"/>
-                <xacro:command_interface_OPCUA name="open" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="20" initial_value="false"/>
+            <gpio name="opcua_semaphore">
+                <xacro:state_interface_OPCUA name="red" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="101"/>
+                <xacro:state_interface_OPCUA name="green" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="102"/>
+                <xacro:state_interface_OPCUA name="yellow" data_type="double" ua_type="UA_Boolean" ua_ns="1" ua_identifier="103"/>
             </gpio>
-            <sensor name="gripper_sensor">
-                <xacro:state_interface_OPCUA name="object_sensor" data_type="bool" ua_type="bool" ua_ns="4" ua_identifier="109" initial_value="true"/>
-            </sensor> -->
 
 
         </ros2_control>
