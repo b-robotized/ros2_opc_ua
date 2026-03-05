@@ -22,6 +22,7 @@ add_library(
   opcua_hardware_interface
   SHARED
   src/opcua_hardware_interface.cpp
+  src/opcua_helpers.cpp
 )
 
 target_include_directories(
