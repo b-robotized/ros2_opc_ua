@@ -4,7 +4,7 @@ This package provides a `ros2_control` **SystemInterface** for communicating wit
 
 The package is built upon the [official open62541pp library](https://github.com/open62541pp/open62541pp).
 
-Currently, the hardware interface acts an OPC UA Client that sets the value of single state interface `my_integer/my_integer_interface` from the server.
+Currently, the hardware interface acts an OPC UA Client that reads and writes the values of different ROS2 state and command interfaces mapped to OPC UA variables in the server.
 
 ---
 
@@ -14,25 +14,36 @@ Currently, the hardware interface acts an OPC UA Client that sets the value of s
 
 ---
 
-## Notes
+## Overview
 
-With the current implementation:
+The example server provides configurable security based on X.509 certificates and standard OPC UA security policies.
 
-### 1.UA Node Identifiers
+It is possible to provide server and client certificates and keys. A self-signed certificate is always generated afterwards in order to allow encrypted communication.
 
-The UA Node Identifiers declared inside the `URDF` should be **numeric**: `NodeIdType::Numeric`.
+CA certificates, though optional, can be used for client certificates verification.
 
-### 2. Command Interfaces and UA Arrays
-For ROS2 **Command interfaces** mapped to OPC UA **Arrays**, **all** the indexes should be declared inside the `URDF`.
+The certificate loading and generation is done according to the following logic:
 
-Otherwise, write requests for that specific Array are not sent to the server.(e.g: `buttonArray_2` in the example URDF).
-This is done to prevent corrupting the remaining uncommanded indices.
-
-### 3. Tracking last command value
- To avoid spamming write requests, the last commanded value is tracked for each ROS2 interface.
- A write request is sent only when the command value changes.
+![](opcua_bringup/images/certificates.jpg)
 
 
+The server also exposes multiple endpoints accessible through the same URL `opc.tcp://127.0.0.1:4840`.
+
+Each endpoint has a **different** combination of OPC UA **security policies** and **message security modes**.
+Available security policies include:
+- None
+- Basic256Sha256
+- Aes256_Sha256_RsaPss
+- Aes128_Sha256_RsaOaep
+
+The policies are assigned to the certificates as follows:
+
+![](opcua_bringup/images/policies.jpg)
+
+The endpoints are then sorted by their security levels so that the client can select the **most secure** option available.
+
+
+---
 
 ## Configuration
 
@@ -42,18 +53,17 @@ The credentials defined in this example are:
 * `username: admin`
 * `password: ua_password`
 
-For the demonstration, these values are hardcoded inside the `server.cpp` file.
+For the demonstration, these values are hardcoded inside the `example_server.cpp` file.
 
-Please note that if your credentials are different, you have to add them to the `server.cpp` to allow connection:
-```
-AccessControlCustom accessControl{
-        true, // allow anonymous
-        {
-            Login{String{"admin"}, String{"ua_password"}},
-        }};
+Please note that **only** `admin` users are given **write access** to the server. Otherwise, users are only allowed to read from the server.
+
+It is possible to give a user with specific credentials admin rights by using the attribute `isAdmin` inside `example_server.cpp`:
+
+```cpp
+// Here, users that connect with the username "admin" are given admin privilege
+const bool isAdmin = (userToken != nullptr && userToken->userName() == "admin");
 
 ```
-It is also possible to give them Admin rights by using the aatribute `isAdmin`.
 
 ---
 
@@ -172,3 +182,24 @@ Send the command to the controller and you should see the commands being changes
 ```
 ros2 topic pub /opcua_controller/commands control_msgs/msg/DynamicInterfaceGroupValues "{interface_groups: ['robot_command'], interface_values: [{interface_names: ['commandPos_0', 'commandPos_1', 'my_integer_interface'], values: [1.0, 0.0, 28.0]}]}" --once
 ```
+
+---
+
+## Notes
+
+With the current implementation:
+
+### 1. UA Node Identifiers
+
+The UA Node Identifiers declared inside the `URDF` should be **numeric**: `NodeIdType::Numeric`.
+
+### 2. Command Interfaces and UA Arrays
+For ROS2 **Command interfaces** mapped to OPC UA **Arrays**, **all** the indexes should be declared inside the `URDF`.
+
+Otherwise, write requests for that specific Array are not sent to the server (e.g: `buttonArray_2` in the example URDF).
+
+This is done to prevent corrupting the remaining uncommanded indices.
+
+### 3. Tracking last command value
+ To avoid spamming write requests, the last commanded value is tracked for each ROS2 interface.
+ A write request is sent only when the command value changes.
