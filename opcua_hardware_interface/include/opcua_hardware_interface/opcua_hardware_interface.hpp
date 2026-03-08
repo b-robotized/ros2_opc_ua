@@ -48,28 +48,19 @@ enum class UAType
   UNKNOWN
 };
 
-struct StateInterfaceUANode
+struct ROSInterfaceMapping
 {
-  opcua::NamespaceIndex ua_ns;  // uint16_t (c.f common.hpp)
-  uint32_t ua_identifier;
-  UAType ua_type;
-  size_t num_elements;
-  std::map<size_t, std::string>
-    state_interface_names;  // If the OPC UA variable is scalar, contains only one pair element
+  size_t index;                   // Index in the OPC UA Array
+  std::string name;               // ROS Interface Name
+  double previous_command_value;  // Track last command written, only for command interfaces
 };
 
-struct CommandInterfaceUANode
+struct ROSInterfaceUANode
 {
-  opcua::NamespaceIndex ua_ns;  // uint16_t (c.f common.hpp)
-  uint32_t ua_identifier;
+  opcua::NodeId node_id;
   UAType ua_type;
-  size_t num_elements;
-  std::map<size_t, std::string> command_interface_names;
-
-  // TODO: no fallback at all! the server is stateful ,we're not streaming
-  std::map<size_t, std::string>
-    fallback_state_interface_names;  // if no fallback_name --> empty string
-  std::vector<double> last_command_values;
+  size_t num_elements;  // size of array on server
+  std::vector<ROSInterfaceMapping> mappings;
 };
 
 class OPCUAHardwareInterface : public hardware_interface::SystemInterface
@@ -114,18 +105,26 @@ private:
 
   double get_interface_value(UAType ua_type, const opcua::Variant & ua_variant);
 
-  std::vector<double> get_command_vector(const CommandInterfaceUANode & command_ua_node);
+  std::vector<double> get_command_vector(const ROSInterfaceUANode & command_ua_node);
   opcua::Variant get_scalar_command_variant(UAType ua_type, double val);
   opcua::Variant get_array_command_variant(UAType ua_type, std::vector<double> & command_array);
 
-  std::vector<StateInterfaceUANode>
+  std::vector<ROSInterfaceUANode>
     state_interfaces_nodes;  // Contains the node IDs corresponding to the state interfaces.
-  std::vector<CommandInterfaceUANode>
+  std::vector<ROSInterfaceUANode>
     command_interfaces_nodes;  // Contains the node IDs corresponding to the command interfaces.
 
   std::vector<opcua::ReadValueId>
     read_items;  // Contains the NodeIds corresponding to our state interfaces
   std::vector<opcua::ua::WriteValue> write_items;
+
+  // Template functions for processing read and write data
+  template <typename T>
+  bool process_read_data(const opcua::Variant & ua_variant, const ROSInterfaceUANode & state_node);
+
+  template <typename T>
+  bool process_write_node(
+    ROSInterfaceUANode & node, std::vector<opcua::ua::WriteValue> & write_values_vec);
 
   // Client identification and security (set once during configure_ua_client)
   std::string app_uri_;

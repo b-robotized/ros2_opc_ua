@@ -782,9 +782,19 @@ int main(int argc, char ** argv)
       .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
       .setDisplayName({"en-US", "Array of boolean command position"})
       .setDataType(DataTypeId::Boolean)
-      .setArrayDimensions({0})                       //! single dimension but unknown in size
-      .setValueRank(opcua::ValueRank::OneDimension)  //! (c.f common.hpp line 157)
+      .setArrayDimensions({0})
+      .setValueRank(opcua::ValueRank::OneDimension)
       .setValue(opcua::Variant{std::vector<UA_Boolean>{UA_FALSE, UA_TRUE}}));
+
+  opcua::Node buttonArrayNode = parentNode.addVariable(
+    {1, 20}, "Command Button Array",
+    opcua::VariableAttributes{}
+      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+      .setDisplayName({"en-US", "Array of boolean command position"})
+      .setDataType(DataTypeId::Boolean)
+      .setArrayDimensions({0})
+      .setValueRank(opcua::ValueRank::OneDimension)
+      .setValue(opcua::Variant{std::vector<UA_Boolean>{UA_FALSE, UA_FALSE, UA_FALSE, UA_FALSE}}));
 
   // Add a callback fucnction to simulate change over time
   size_t counter = 0;
@@ -794,6 +804,7 @@ int main(int argc, char ** argv)
     [&]
     {
       const auto commandPos = commandPosNode.readValue().to<std::vector<bool>>();
+      const auto buttonArray = buttonArrayNode.readValue().to<std::vector<bool>>();
       auto currentPos = currentPosNode.readValue().to<std::vector<float>>();
       ++counter;
       const float angle = static_cast<float>(counter) * 0.01f;
@@ -802,6 +813,8 @@ int main(int argc, char ** argv)
 
       std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
                 << std::endl;
+      std::cout << "buttonArray is: [ " << buttonArray[0] << " , " << buttonArray[1] << " , "
+                << buttonArray[2] << " , " << buttonArray[3] << " ]" << std::endl;
       std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]"
                 << std::endl;
 
