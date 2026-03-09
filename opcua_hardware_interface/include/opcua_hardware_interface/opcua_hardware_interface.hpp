@@ -134,16 +134,6 @@ private:
   template <typename T>
   bool process_write_node(
     ROSInterfaceUANode & node, std::vector<opcua::ua::WriteValue> & write_values_vec);
-
-  void process_client_certificates(
-    std::string & ca_cert_path, std::string & cert_path, std::string & key_path,
-    std::vector<opcua::ua::EndpointDescription> & endpoints);
-
-  bool select_endpoint(
-    std::string & cert_path, std::string & username,
-    std::vector<opcua::ua::EndpointDescription> & endpoints);
-
-  void configure_client(std::string & username, std::string & password);
 };
 
 }  // namespace opcua_hardware_interface
