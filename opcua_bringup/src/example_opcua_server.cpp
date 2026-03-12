@@ -578,7 +578,7 @@ int main(int argc, char ** argv)
   }
 
   // Set Endpoint URL to bind to all interfaces
-  std::string url = "opc.tcp://127.0.0.1:4840";
+  std::string url = "opc.tcp://192.168.28.201:4840";
 
   if (ua_server_config->serverUrlsSize > 0)
   {
