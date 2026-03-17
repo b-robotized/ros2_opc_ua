@@ -257,6 +257,50 @@ static std::string to_string(const UA_String & s)
   return std::string(reinterpret_cast<char *>(s.data), s.length);
 }
 
+constexpr std::string_view toString(opcua::LogLevel level)
+{
+  switch (level)
+  {
+    case opcua::LogLevel::Trace:
+      return "trace";
+    case opcua::LogLevel::Debug:
+      return "debug";
+    case opcua::LogLevel::Info:
+      return "info";
+    case opcua::LogLevel::Warning:
+      return "warning";
+    case opcua::LogLevel::Error:
+      return "error";
+    case opcua::LogLevel::Fatal:
+      return "fatal";
+    default:
+      return "unknown";
+  }
+}
+
+constexpr std::string_view toString(opcua::LogCategory category)
+{
+  switch (category)
+  {
+    case opcua::LogCategory::Network:
+      return "network";
+    case opcua::LogCategory::SecureChannel:
+      return "channel";
+    case opcua::LogCategory::Session:
+      return "session";
+    case opcua::LogCategory::Server:
+      return "server";
+    case opcua::LogCategory::Client:
+      return "client";
+    case opcua::LogCategory::Userland:
+      return "userland";
+    case opcua::LogCategory::SecurityPolicy:
+      return "securitypolicy";
+    default:
+      return "unknown";
+  }
+}
+
 static void print_server_endpoints(const UA_ServerConfig * config, const rclcpp::Logger & logger)
 {
   std::stringstream ss;
@@ -383,6 +427,13 @@ int main(int argc, char ** argv)
   std::string cert_path = node->declare_parameter("security.certificate_path", "");
   std::string key_path = node->declare_parameter("security.private_key_path", "");
   std::string ca_cert_path = node->declare_parameter("security.ca_certificate_path", "");
+  bool verbose = node->declare_parameter("verbose", true);
+
+  if (!verbose)
+  {
+    // Set both the ROS2 logger level to warn
+    node->get_logger().set_level(rclcpp::Logger::Level::Warn);
+  }
 
   opcua::ByteString loadedCertificate;
   opcua::ByteString loadedPrivateKey;
@@ -748,6 +799,24 @@ int main(int argc, char ** argv)
 
   config.setAccessControl(accessControl);
   config->allowNonePolicyPassword = true;  // Allow UserName on None policy
+
+  // Configure the server logs
+  [[maybe_unused]] auto filteredLogger =
+    [](opcua::LogLevel level, opcua::LogCategory category, std::string_view msg)
+  {
+    // Only allow Warning, Error, and Fatal severities
+    if (level >= opcua::LogLevel::Warning)
+    {
+      std::cout << "[" << toString(level) << "] " << "[" << toString(category) << "] " << msg
+                << std::endl;
+    }
+  };
+
+  if (!verbose)
+  {
+    // Set the OPC UA logger level to warning
+    config.setLogger(filteredLogger);
+  }
 
   opcua::Server server{std::move(config)};
 
