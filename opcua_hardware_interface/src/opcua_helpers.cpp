@@ -222,10 +222,10 @@ std::string toString(opcua::UserTokenType tokenType)
 }
 
 void print_servers_info(
-  const std::vector<opcua::ApplicationDescription> & servers, const rclcpp::Logger & logger)
+  opcua::Client & client, const std::vector<opcua::ApplicationDescription> & servers,
+  const rclcpp::Logger & logger)
 {
   size_t serverIndex = 0;
-  opcua::Client client;
   for (const auto & server : servers)
   {
     std::stringstream ss;
@@ -594,9 +594,6 @@ bool ClientConfig::select_endpoint(
 {
   // Simplified Selection Logic: Just use Security Level (highest = best)
   uint8_t bestSecurityLevel = 0;
-
-  RCLCPP_INFO(logger, "Username is: %s", username.c_str());
-
   for (const auto & endpoint : endpoints)
   {
     // Skip secure endpoints if we don't have a client certificate
@@ -616,11 +613,8 @@ bool ClientConfig::select_endpoint(
     {
       if (!username.empty())
       {
-        RCLCPP_INFO(logger, "if (!username.empty())");
-
         if (tokenPolicy.tokenType() == opcua::UserTokenType::Username)
         {
-          RCLCPP_INFO(logger, "tokenPolicy.tokenType() == opcua::UserTokenType::Username");
           candidatePolicy = &tokenPolicy;
           break;
         }
@@ -650,16 +644,6 @@ bool ClientConfig::select_endpoint(
       selectedEndpoint = &endpoint;
       selectedTokenPolicy = candidatePolicy;
     }
-  }
-
-  if (!selectedEndpoint)
-  {
-    RCLCPP_INFO(logger, "!selectedEndpoint");
-  }
-
-  if (!selectedTokenPolicy)
-  {
-    RCLCPP_INFO(logger, "!selectedTokenPolicy");
   }
 
   if (!selectedEndpoint || !selectedTokenPolicy)

@@ -96,7 +96,7 @@ public:
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
 private:
-  rclcpp::Logger getLogger() { return rclcpp::get_logger("OPCUAHardwareInterface"); }
+  rclcpp::Logger logger_ = rclcpp::get_logger("OPCUAHardwareInterface");
 
   // ========= OPC UA ==============================
   // OPC UA type helper

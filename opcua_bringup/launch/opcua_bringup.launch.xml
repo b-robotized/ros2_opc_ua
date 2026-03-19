@@ -1,8 +1,10 @@
 <launch>
     <arg name="mock_hardware" default="false" />
     <arg name="mock_sensor_commands" default="false"/>
+    <arg name="verbose" default="true" description="Set to false to disable OPC UA and ROS2 logs of Info severity and lower."/>
 
-    <let name="robot_description_content" value="$(command '$(find-exec xacro) $(find-pkg-share opcua_bringup)/urdf/opcua.urdf.xacro mock_hardware:=$(var mock_hardware) mock_sensor_commands:=$(var mock_sensor_commands)')"/>
+
+    <let name="robot_description_content" value="$(command '$(find-exec xacro) $(find-pkg-share opcua_bringup)/urdf/opcua.urdf.xacro mock_hardware:=$(var mock_hardware) mock_sensor_commands:=$(var mock_sensor_commands) verbose:=$(var verbose)')"/>
 
     <!--robot_state_pub_node-->
     <node pkg="robot_state_publisher" exec="robot_state_publisher" output="both">

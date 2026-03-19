@@ -68,7 +68,8 @@ std::string toString(opcua::MessageSecurityMode securityMode);
 std::string toString(opcua::UserTokenType tokenType);
 
 void print_servers_info(
-  const std::vector<opcua::ApplicationDescription> & servers, const rclcpp::Logger & logger);
+  opcua::Client & client, const std::vector<opcua::ApplicationDescription> & servers,
+  const rclcpp::Logger & logger);
 
 void print_client_info(
   const opcua::Client & client, const rclcpp::Logger & logger,
