@@ -18,6 +18,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <regex>
 #include <sstream>
 #include <vector>
 
@@ -427,12 +428,21 @@ int main(int argc, char ** argv)
   std::string cert_path = node->declare_parameter("security.certificate_path", "");
   std::string key_path = node->declare_parameter("security.private_key_path", "");
   std::string ca_cert_path = node->declare_parameter("security.ca_certificate_path", "");
+  std::string ip_address = node->declare_parameter("ip_address", "127.0.0.1");
   bool verbose = node->declare_parameter("verbose", true);
 
+  // Set the ROS2 logger level to warn
   if (!verbose)
   {
-    // Set both the ROS2 logger level to warn
     node->get_logger().set_level(rclcpp::Logger::Level::Warn);
+  }
+
+  // Validate the format of the Ip Address using regular expressions
+  const std::regex pattern("^((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\\.(?!$)|$)){4}$");
+  if (!std::regex_match(ip_address, pattern))
+  {
+    RCLCPP_FATAL(node->get_logger(), "\tInvalid format for 'ip'. Expected 'x.x.x.x'.");
+    return 1;
   }
 
   opcua::ByteString loadedCertificate;
@@ -629,7 +639,7 @@ int main(int argc, char ** argv)
   }
 
   // Set Endpoint URL to bind to all interfaces
-  std::string url = "opc.tcp://127.0.0.1:4840";
+  std::string url = "opc.tcp://" + ip_address + ":4840";
 
   if (ua_server_config->serverUrlsSize > 0)
   {

@@ -2,10 +2,12 @@
   <arg name="certificate_path" default="$(find-pkg-share opcua_bringup)/config/server_cert.der" description="Path to the server certificate (DER format)"/>
   <arg name="private_key_path" default="$(find-pkg-share opcua_bringup)/config/server_key.der" description="Path to the server private key (DER format)"/>
   <arg name="verbose" default="true" description="Set the verbosity to false to disable OPC UA and ROS2 logs of Info severity and lower." />
+  <arg name="ip_address" default="127.0.0.1" description="Set the IP address for the example server." />
 
   <node pkg="opcua_bringup" exec="example_opcua_server" name="opcua_server" output="screen">
     <param name="security.certificate_path" value="$(var certificate_path)"/>
     <param name="security.private_key_path" value="$(var private_key_path)"/>
     <param name="verbose" value="$(var verbose)"/>
+    <param name="ip_address" value="$(var ip_address)"/>
   </node>
 </launch>
