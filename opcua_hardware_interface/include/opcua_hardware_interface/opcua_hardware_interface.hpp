@@ -25,6 +25,7 @@
 #include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
+#include "opcua_hardware_interface/opcua_helpers.hpp"
 #include "rclcpp/macros.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 
@@ -46,6 +47,13 @@ enum class UAType
   UA_Float,
   UA_Double,
   UNKNOWN
+};
+
+struct UAClient
+{
+  opcua::Client client;
+  opcua_helpers::ClientConfig ua_config;  // contains client ID and security (set once during
+                                          // configure_ua_client)
 };
 
 struct ROSInterfaceMapping
@@ -88,14 +96,15 @@ public:
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
 private:
-  rclcpp::Logger getLogger() { return rclcpp::get_logger("OPCUAHardwareInterface"); }
+  rclcpp::Logger logger_ = rclcpp::get_logger("OPCUAHardwareInterface");
 
   // ========= OPC UA ==============================
   // OPC UA type helper
   UAType strToUAType(const std::string & type_str);
   size_t UAToROS2Type(UAType ua_type);
 
-  opcua::Client client;
+  UAClient ua_client;
+  std::string endpoint_url_;
   bool configure_ua_client();
 
   void populate_state_interfaces_node_ids();
@@ -125,15 +134,6 @@ private:
   template <typename T>
   bool process_write_node(
     ROSInterfaceUANode & node, std::vector<opcua::ua::WriteValue> & write_values_vec);
-
-  // Client identification and security (set once during configure_ua_client)
-  std::string app_uri_;
-  std::string app_name_;
-  std::string endpoint_url_;
-  bool has_client_certificate_;
-  opcua::ByteString client_cert_;
-  opcua::ByteString client_key_;
-  opcua::ByteString ca_cert_;
 };
 
 }  // namespace opcua_hardware_interface

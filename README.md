@@ -4,7 +4,9 @@ This package provides a `ros2_control` **SystemInterface** for communicating wit
 
 The package is built upon the [official open62541pp library](https://github.com/open62541pp/open62541pp).
 
-Currently, the hardware interface acts an OPC UA Client that sets the value of single state interface `my_integer/my_integer_interface` from the server.
+Currently, the hardware interface acts an OPC UA Client that reads and writes the values of different ROS2 state and command interfaces mapped to OPC UA variables in the server.
+
+For more details about the server and client connection logic, please refer to the following [document](opcua_hardware_interface/docs/opcua_overview.md).
 
 ---
 
@@ -14,26 +16,6 @@ Currently, the hardware interface acts an OPC UA Client that sets the value of s
 
 ---
 
-## Notes
-
-With the current implementation:
-
-### 1.UA Node Identifiers
-
-The UA Node Identifiers declared inside the `URDF` should be **numeric**: `NodeIdType::Numeric`.
-
-### 2. Command Interfaces and UA Arrays
-For ROS2 **Command interfaces** mapped to OPC UA **Arrays**, **all** the indexes should be declared inside the `URDF`.
-
-Otherwise, write requests for that specific Array are not sent to the server.(e.g: `buttonArray_2` in the example URDF).
-This is done to prevent corrupting the remaining uncommanded indices.
-
-### 3. Tracking last command value
- To avoid spamming write requests, the last commanded value is tracked for each ROS2 interface.
- A write request is sent only when the command value changes.
-
-
-
 ## Configuration
 
 The OPC UA server allows connections from users with specific credentials that could be managed through the `<ros2_control>` tag of your robot's URDF file.
@@ -42,18 +24,17 @@ The credentials defined in this example are:
 * `username: admin`
 * `password: ua_password`
 
-For the demonstration, these values are hardcoded inside the `server.cpp` file.
+For the demonstration, these values are hardcoded inside the `example_server.cpp` file.
 
-Please note that if your credentials are different, you have to add them to the `server.cpp` to allow connection:
-```
-AccessControlCustom accessControl{
-        true, // allow anonymous
-        {
-            Login{String{"admin"}, String{"ua_password"}},
-        }};
+Please note that **only** `admin` users are given **write access** to the server. Otherwise, users are only allowed to read from the server.
+
+It is possible to give a user with specific credentials admin rights by using the attribute `isAdmin` inside `example_server.cpp`:
+
+```cpp
+// Here, users that connect with the username "admin" are given admin privilege
+const bool isAdmin = (userToken != nullptr && userToken->userName() == "admin");
 
 ```
-It is also possible to give them Admin rights by using the aatribute `isAdmin`.
 
 ---
 
@@ -79,6 +60,12 @@ ros2 launch opcua_bringup example_server.launch.xml security_policy:=SignAndEncr
 
 # Disable Anonymous access
 ros2 launch opcua_bringup example_server.launch.xml allow_anonymous:=false
+
+# Disable any open62541pp & ROS2 logs under warning severity
+ros2 launch opcua_bringup example_server.launch.xml verbose:=false
+
+# Run the server on a specific IP Address
+ros2 launch opcua_bringup example_server.launch.xml ip_address:="192.168.1.100"
 ```
 
 #### Option 2: Using ROS 2 Run
@@ -172,3 +159,29 @@ Send the command to the controller and you should see the commands being changes
 ```
 ros2 topic pub /opcua_controller/commands control_msgs/msg/DynamicInterfaceGroupValues "{interface_groups: ['robot_command'], interface_values: [{interface_names: ['commandPos_0', 'commandPos_1', 'my_integer_interface'], values: [1.0, 0.0, 28.0]}]}" --once
 ```
+
+**Note**: *You can also disable any logs under warning severity by using the argument `verbose`:*
+```
+ros2 launch opcua_bringup opcua_bringup.launch.xml verbose:=false
+```
+
+---
+
+## Notes
+
+With the current implementation:
+
+### 1. UA Node Identifiers
+
+The UA Node Identifiers declared inside the `URDF` should be **numeric**: `NodeIdType::Numeric`.
+
+### 2. Command Interfaces and UA Arrays
+For ROS2 **Command interfaces** mapped to OPC UA **Arrays**, **all** the indexes should be declared inside the `URDF`.
+
+Otherwise, write requests for that specific Array are not sent to the server (e.g: `buttonArray_2` in the example URDF).
+
+This is done to prevent corrupting the remaining uncommanded indices.
+
+### 3. Tracking last command value
+ To avoid spamming write requests, the last commanded value is tracked for each ROS2 interface.
+ A write request is sent only when the command value changes.
