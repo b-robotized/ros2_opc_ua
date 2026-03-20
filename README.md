@@ -6,42 +6,13 @@ The package is built upon the [official open62541pp library](https://github.com/
 
 Currently, the hardware interface acts an OPC UA Client that reads and writes the values of different ROS2 state and command interfaces mapped to OPC UA variables in the server.
 
+For more details about the server and client connection logic, please refer to the following [document](opcua_hardware_interface/docs/opcua_overview.md).
+
 ---
 
 ## Requirements
 * ROS 2 (Jazzy Jalisco or newer)
 * [open62541pp vendor ](https://github.com/b-robotized/open62541pp_vendor) package
-
----
-
-## Overview
-
-The example server provides configurable security based on X.509 certificates and standard OPC UA security policies.
-
-It is possible to provide server and client certificates and keys. A self-signed certificate is always generated afterwards in order to allow encrypted communication.
-
-CA certificates, though optional, can be used for client certificates verification.
-
-The certificate loading and generation is done according to the following logic:
-
-![](opcua_bringup/images/certificates.jpg)
-
-
-The server also exposes multiple endpoints accessible through the same URL `opc.tcp://127.0.0.1:4840`.
-
-Each endpoint has a **different** combination of OPC UA **security policies** and **message security modes**.
-Available security policies include:
-- None
-- Basic256Sha256
-- Aes256_Sha256_RsaPss
-- Aes128_Sha256_RsaOaep
-
-The policies are assigned to the certificates as follows:
-
-![](opcua_bringup/images/policies.jpg)
-
-The endpoints are then sorted by their security levels so that the client can select the **most secure** option available.
-
 
 ---
 
@@ -89,6 +60,12 @@ ros2 launch opcua_bringup example_server.launch.xml security_policy:=SignAndEncr
 
 # Disable Anonymous access
 ros2 launch opcua_bringup example_server.launch.xml allow_anonymous:=false
+
+# Disable any open62541pp & ROS2 logs under warning severity
+ros2 launch opcua_bringup example_server.launch.xml verbose:=false
+
+# Run the server on a specific IP Address
+ros2 launch opcua_bringup example_server.launch.xml ip_address:="192.168.1.100"
 ```
 
 #### Option 2: Using ROS 2 Run
@@ -181,6 +158,11 @@ ros2 topic echo /controller_manager/introspection_data/full
 Send the command to the controller and you should see the commands being changes in the server
 ```
 ros2 topic pub /opcua_controller/commands control_msgs/msg/DynamicInterfaceGroupValues "{interface_groups: ['robot_command'], interface_values: [{interface_names: ['commandPos_0', 'commandPos_1', 'my_integer_interface'], values: [1.0, 0.0, 28.0]}]}" --once
+```
+
+**Note**: *You can also disable any logs under warning severity by using the argument `verbose`:*
+```
+ros2 launch opcua_bringup opcua_bringup.launch.xml verbose:=false
 ```
 
 ---
