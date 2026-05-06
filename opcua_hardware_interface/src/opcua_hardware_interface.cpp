@@ -646,12 +646,30 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
 {
   bool any_item_read_failed = false;
 
-  // Client lost connection to the UA server
-  if (!client.isConnected())
+  // Tick the EventLoop with timeout 0 to process whatever events already happened
+  // including connection failure
+  try
+  {
+    client.runIterate(0);
+  }
+  catch (const opcua::BadStatus & e)
   {
     RCLCPP_ERROR(
-      getLogger(), "Hardware interface lost connection to the server during read operation.");
-    any_item_read_failed = true;
+      getLogger(),
+      "OPC UA client is dead: %s. Will completly disconnect and retry connection again.", e.what());
+    client.disconnect();
+  }
+
+  // No secure channel open, reconnection will automatically be initiated in the event loop in the
+  // next cycle
+  if (!client.isConnected())
+  {
+    RCLCPP_WARN_THROTTLE(
+      getLogger(), *get_clock(), 2000,
+      "OPC UA client is not connected, skipping read. Reconnecting...");
+
+    // Skip to next cycle
+    return hardware_interface::return_type::OK;
   }
 
   // Perform ONE Read Request with all the desired NodeIds
@@ -869,12 +887,28 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
 {
   bool any_item_write_failed = false;
 
+  // Tick the EventLoop with timeout 0 to process whatever events already happened
+  // including connection failure
+  try
+  {
+    client.runIterate(0);
+  }
+  catch (const opcua::BadStatus & e)
+  {
+    RCLCPP_ERROR(
+      getLogger(),
+      "OPC UA client is dead: %s. Will completly disconnect and retry connection again.", e.what());
+    client.disconnect();
+  }
+
   // Client lost connection to the UA server
   if (!client.isConnected())
   {
-    RCLCPP_ERROR(
-      getLogger(), "Hardware interface lost connection to the server during write operation.");
-    any_item_write_failed = true;
+    RCLCPP_WARN_THROTTLE(
+      getLogger(), *get_clock(), 2000,
+      "OPC UA client is not connected, skipping write. Reconnecting...");
+
+    return hardware_interface::return_type::OK;
   }
 
   // There are no command interfaces to write to
@@ -912,8 +946,7 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
       ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
 
       RCLCPP_INFO(
-          getLogger(),
-          "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
+        getLogger(), "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
     }
     else  // if the command interface is an array
     {
@@ -1128,7 +1161,7 @@ std::vector<double> OPCUAHardwareInterface::get_command_vector(
 
     if (std::isnan(current_command))
     {
-      return command_vector; // if any command in an array is NaN, skip writing this cycle
+      return command_vector;  // if any command in an array is NaN, skip writing this cycle
     }
     command_vector.push_back(current_command);
   }
