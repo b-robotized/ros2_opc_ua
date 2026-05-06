@@ -641,35 +641,40 @@ void OPCUAHardwareInterface::populate_read_items()
   }
 }
 
-hardware_interface::return_type OPCUAHardwareInterface::read(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+bool OPCUAHardwareInterface::check_connection()
 {
-  bool any_item_read_failed = false;
+  bool is_connected = true;
 
-  // Tick the EventLoop with timeout 0 to process whatever events already happened
-  // including connection failure
   try
   {
     client.runIterate(0);
   }
   catch (const opcua::BadStatus & e)
   {
-    RCLCPP_ERROR(
-      getLogger(),
-      "OPC UA client is dead: %s. Will completly disconnect and retry connection again.", e.what());
+    RCLCPP_ERROR(getLogger(), "OPC UA client connection error: %s. Disconnecting...", e.what());
     client.disconnect();
+
+    is_connected = false;
   }
 
-  // No secure channel open, reconnection will automatically be initiated in the event loop in the
-  // next cycle
   if (!client.isConnected())
   {
     RCLCPP_WARN_THROTTLE(
-      getLogger(), *get_clock(), 2000,
-      "OPC UA client is not connected, skipping read. Reconnecting...");
+      getLogger(), *get_clock(), 2000, "OPC UA client is not connected, skipping. Reconnecting...");
+    is_connected = false;
+  }
 
-    // Skip to next cycle
-    return hardware_interface::return_type::OK;
+  return is_connected;
+}
+
+hardware_interface::return_type OPCUAHardwareInterface::read(
+  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+{
+  bool any_item_read_failed = false;
+
+  if (!check_connection())
+  {
+    return hardware_interface::return_type::ERROR;
   }
 
   // Perform ONE Read Request with all the desired NodeIds
@@ -887,28 +892,9 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
 {
   bool any_item_write_failed = false;
 
-  // Tick the EventLoop with timeout 0 to process whatever events already happened
-  // including connection failure
-  try
+  if (!check_connection())
   {
-    client.runIterate(0);
-  }
-  catch (const opcua::BadStatus & e)
-  {
-    RCLCPP_ERROR(
-      getLogger(),
-      "OPC UA client is dead: %s. Will completly disconnect and retry connection again.", e.what());
-    client.disconnect();
-  }
-
-  // Client lost connection to the UA server
-  if (!client.isConnected())
-  {
-    RCLCPP_WARN_THROTTLE(
-      getLogger(), *get_clock(), 2000,
-      "OPC UA client is not connected, skipping write. Reconnecting...");
-
-    return hardware_interface::return_type::OK;
+    return hardware_interface::return_type::ERROR;
   }
 
   // There are no command interfaces to write to

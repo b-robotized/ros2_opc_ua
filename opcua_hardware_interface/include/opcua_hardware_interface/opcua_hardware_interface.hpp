@@ -135,6 +135,9 @@ private:
   opcua::ByteString client_cert_;
   opcua::ByteString client_key_;
   opcua::ByteString ca_cert_;
+
+  // Check if reconnection is possible
+  bool check_connection();
 };
 
 }  // namespace opcua_hardware_interface
