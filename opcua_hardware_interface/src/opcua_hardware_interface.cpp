@@ -945,13 +945,8 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
 
       ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
 
-<<<<<<< Updated upstream
-      RCLCPP_INFO(
-        getLogger(), "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
-=======
       RCLCPP_DEBUG(
         getLogger(), "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
->>>>>>> Stashed changes
     }
     else  // if the command interface is an array
     {
