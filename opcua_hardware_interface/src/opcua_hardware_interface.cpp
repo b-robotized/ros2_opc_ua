@@ -424,25 +424,6 @@ hardware_interface::CallbackReturn OPCUAHardwareInterface::on_deactivate(
   return CallbackReturn::SUCCESS;
 }
 
-// Converts declared units to SI
-double unit_to_scaling_factor(const std::string & unit_str)
-{
-  double scaling_factor = 1.0;
-  if (unit_str == "mm")
-  {
-    scaling_factor = 1e3;
-  }
-  if (unit_str == "mm/s")
-  {
-    scaling_factor = 1e3;
-  }
-  if (unit_str == "rpm")
-  {
-    scaling_factor = 60.0 / (2.0 * M_PI);
-  }
-  return scaling_factor;
-}
-
 void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
 {
   RCLCPP_INFO(
@@ -776,13 +757,14 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
     const opcua::Variant & ua_variant = read_result.value();
 
     std::string interface_name;
-    double interface_value;
+    double interface_value;  // in the declared units in the URDF
     std::vector<double> values;
 
     // OPC UA variable is scalar
     if (ua_variant.isScalar())
     {
       interface_value = get_interface_value(state_interface_ua_node.ua_type, ua_variant);
+
       interface_name = state_interface_ua_node.state_interface_names.at(0);
 
       if (std::isnan(interface_value))
@@ -1480,6 +1462,50 @@ opcua::Variant OPCUAHardwareInterface::get_array_command_variant(
   }
 
   return command_variant;
+}
+
+// Converts declared units to SI
+double OPCUAHardwareInterface::unit_to_scaling_factor(const std::string & unit_str)
+{
+  double scaling_factor = 1.0;
+  if (unit_str == "mm")
+  {
+    scaling_factor = 1e3;
+  }
+  if (unit_str == "mm/s")
+  {
+    scaling_factor = 1e3;
+  }
+  if (unit_str == "rpm")
+  {
+    scaling_factor = 60.0 / (2.0 * M_PI);
+  }
+  return scaling_factor;
+}
+
+double OPCUAHardwareInterface::clamp(
+  const std::string & interface_name, double interface_val, const double min, const double max)
+{
+  double result = interface_val;
+  if (std::isnan(min) | std::isnan(max))  // Clamping to NaN generates undefined behaviour
+  {
+    RCLCPP_WARN(
+      getLogger(), "Undefined boundaries for the interface %s. Clamping will not be applied!",
+      interface_name.c_str());
+  }
+  else if ((interface_val < min) | (interface_val > max))
+  {
+    RCLCPP_WARN(
+      getLogger(), "The interface %s is outside the defined boundaries. Clamping will be applied!",
+      interface_name.c_str());
+    result = std::clamp(interface_val, min, max);
+  }
+  return result;
+}
+
+double OPCUAHardwareInterface::scale(double interface_val, const double scaling_factor)
+{
+  return interface_val * scaling_factor;
 }
 
 }  // namespace opcua_hardware_interface
