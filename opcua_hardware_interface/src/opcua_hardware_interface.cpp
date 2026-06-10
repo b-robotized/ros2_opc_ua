@@ -757,15 +757,19 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
     const opcua::Variant & ua_variant = read_result.value();
 
     std::string interface_name;
-    double interface_value;  // in the declared units in the URDF
+    double interface_value;  // unit: same as the one in the URDF
+    double min = state_interface_ua_node.min_value;
+    double max = state_interface_ua_node.max_value;
+    double scaling_factor = state_interface_ua_node.scaling_factor;
     std::vector<double> values;
 
     // OPC UA variable is scalar
     if (ua_variant.isScalar())
     {
-      interface_value = get_interface_value(state_interface_ua_node.ua_type, ua_variant);
-
       interface_name = state_interface_ua_node.state_interface_names.at(0);
+      interface_value = get_interface_value(state_interface_ua_node.ua_type, ua_variant);
+      clamp(interface_name, interface_value, min, max);
+      interface_value = scale(interface_value, scaling_factor);
 
       if (std::isnan(interface_value))
       {
@@ -817,6 +821,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
+          clamp(interface_name, interface_value, min, max);
+          interface_value = scale(interface_value, scaling_factor);
           set_state(interface_name, interface_value);
         }
       }
@@ -828,6 +834,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
+          clamp(interface_name, interface_value, min, max);
+          interface_value = scale(interface_value, scaling_factor);
           set_state(interface_name, interface_value);
         }
       }
@@ -839,6 +847,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
+          clamp(interface_name, interface_value, min, max);
+          interface_value = scale(interface_value, scaling_factor);
           set_state(interface_name, interface_value);
         }
       }
@@ -850,6 +860,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
+          clamp(interface_name, interface_value, min, max);
+          interface_value = scale(interface_value, scaling_factor);
           set_state(interface_name, interface_value);
         }
       }
@@ -861,6 +873,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
+          clamp(interface_name, interface_value, min, max);
+          interface_value = scale(interface_value, scaling_factor);
           set_state(interface_name, interface_value);
         }
       }
@@ -872,6 +886,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
+          clamp(interface_name, interface_value, min, max);
+          interface_value = scale(interface_value, scaling_factor);
           set_state(interface_name, interface_value);
         }
       }
@@ -883,6 +899,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
+          clamp(interface_name, interface_value, min, max);
+          interface_value = scale(interface_value, scaling_factor);
           set_state(interface_name, interface_value);
         }
       }
@@ -894,6 +912,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
+          clamp(interface_name, interface_value, min, max);
+          interface_value = scale(interface_value, scaling_factor);
           set_state(interface_name, interface_value);
         }
       }
@@ -905,6 +925,8 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
+          clamp(interface_name, interface_value, min, max);
+          interface_value = scale(interface_value, scaling_factor);
           set_state(interface_name, interface_value);
         }
       }
@@ -943,6 +965,9 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
   {
     opcua::Variant ua_variant;  // will be used to write the value to the OPC UA server
     std::string command_interface_name = command_interface_ua_node.command_interface_names.at(0);
+    double scaling_factor = command_interface_ua_node.scaling_factor;
+    double min = command_interface_ua_node.min_value;
+    double max = command_interface_ua_node.max_value;
 
     // if the command interface is scalar
     if (command_interface_ua_node.num_elements == 1)
@@ -961,6 +986,9 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
       }
       command_interface_ua_node.last_command_values[0] = val;
 
+      // scale and clamp the value gbefore sending to PLC
+      val = scale(val, scaling_factor);
+      clamp(command_interface_name, val, min, max);
       ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
 
       RCLCPP_INFO(
@@ -1470,37 +1498,35 @@ double OPCUAHardwareInterface::unit_to_scaling_factor(const std::string & unit_s
   double scaling_factor = 1.0;
   if (unit_str == "mm")
   {
-    scaling_factor = 1e3;
+    scaling_factor = 1e-3;
   }
   if (unit_str == "mm/s")
   {
-    scaling_factor = 1e3;
+    scaling_factor = 1e-3;
   }
   if (unit_str == "rpm")
   {
-    scaling_factor = 60.0 / (2.0 * M_PI);
+    scaling_factor = (2.0 * M_PI) / 60.0;
   }
   return scaling_factor;
 }
 
-double OPCUAHardwareInterface::clamp(
-  const std::string & interface_name, double interface_val, const double min, const double max)
+void OPCUAHardwareInterface::clamp(
+  const std::string & interface_name, double & interface_val, const double min, const double max)
 {
-  double result = interface_val;
-  if (std::isnan(min) | std::isnan(max))  // Clamping to NaN generates undefined behaviour
+  if (std::isnan(min) || std::isnan(max))  // Clamping to NaN generates undefined behaviour
   {
     RCLCPP_WARN(
       getLogger(), "Undefined boundaries for the interface %s. Clamping will not be applied!",
       interface_name.c_str());
   }
-  else if ((interface_val < min) | (interface_val > max))
+  else if ((interface_val < min) || (interface_val > max))
   {
     RCLCPP_WARN(
       getLogger(), "The interface %s is outside the defined boundaries. Clamping will be applied!",
       interface_name.c_str());
-    result = std::clamp(interface_val, min, max);
+    interface_val = std::clamp(interface_val, min, max);
   }
-  return result;
 }
 
 double OPCUAHardwareInterface::scale(double interface_val, const double scaling_factor)
