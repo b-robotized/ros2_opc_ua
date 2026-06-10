@@ -2,7 +2,7 @@
 <robot xmlns:xacro="http://wiki.ros.org/xacro">
 
 
-    <xacro:macro name="command_interface_OPCUA" params="name data_type ua_type ua_ns ua_identifier unit min max scaling_factor n_elements:=1 index:='' initial_value:=0">
+    <xacro:macro name="command_interface_OPCUA" params="name data_type ua_type ua_ns ua_identifier unit:='' min:='' max:=''' scaling_factor:='' n_elements:=1 index:='' initial_value:=0">
         <command_interface name="${name}" data_type="${data_type}">
             <xacro:if value="${initial_value != ''}">
                 <param name="initial_value">${initial_value}</param>
@@ -10,18 +10,26 @@
             <param name="ua_type">${ua_type}</param>
             <param name="ua_ns">${ua_ns}</param>
             <param name="ua_identifier">${ua_identifier}</param>
-            <param name="unit">${unit}</param>
-            <param name="min">${min}</param>
-            <param name="max">${max}</param>
-            <param name="scaling_factor">${scaling_factor}</param>
             <param name="n_elements">${n_elements}</param>
+            <xacro:if value="${unit != ''}">
+                <param name="unit">${unit}</param>
+            </xacro:if>
+             <xacro:if value="${min != ''}">
+                <param name="min">${min}</param>
+            </xacro:if>
+            <xacro:if value="${max != ''}">
+                <param name="max">${max}</param>
+            </xacro:if>
+            <xacro:if value="${scaling_factor != ''}">
+                <param name="scaling_factor">${scaling_factor}</param>
+            </xacro:if>
             <xacro:if value="${index != ''}">
                 <param name="index">${index}</param>
             </xacro:if>
         </command_interface>
     </xacro:macro>
 
-    <xacro:macro name="state_interface_OPCUA" params="name data_type ua_type ua_ns ua_identifier unit min max scaling_factor n_elements:=1 index:='' initial_value:=0">
+    <xacro:macro name="state_interface_OPCUA" params="name data_type ua_type ua_ns ua_identifier unit:='' min:='' max:='' scaling_factor:='' n_elements:=1 index:='' initial_value:=0">
         <state_interface name="${name}" data_type="${data_type}">
             <xacro:if value="${initial_value != ''}">
                 <param name="initial_value">${initial_value}</param>
@@ -29,11 +37,19 @@
             <param name="ua_type">${ua_type}</param>
             <param name="ua_ns">${ua_ns}</param>
             <param name="ua_identifier">${ua_identifier}</param>
-            <param name="unit">${unit}</param>
-            <param name="min">${min}</param>
-            <param name="max">${max}</param>
-            <param name="scaling_factor">${scaling_factor}</param>
             <param name="n_elements">${n_elements}</param>
+            <xacro:if value="${unit != ''}">
+                <param name="unit">${unit}</param>
+            </xacro:if>
+             <xacro:if value="${min != ''}">
+                <param name="min">${min}</param>
+            </xacro:if>
+            <xacro:if value="${max != ''}">
+                <param name="max">${max}</param>
+            </xacro:if>
+            <xacro:if value="${scaling_factor != ''}">
+                <param name="scaling_factor">${scaling_factor}</param>
+            </xacro:if>
             <xacro:if value="${index != ''}">
                 <param name="index">${index}</param>
             </xacro:if>
