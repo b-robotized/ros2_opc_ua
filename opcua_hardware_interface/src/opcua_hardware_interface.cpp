@@ -424,6 +424,25 @@ hardware_interface::CallbackReturn OPCUAHardwareInterface::on_deactivate(
   return CallbackReturn::SUCCESS;
 }
 
+// Converts declared units to SI
+double unit_to_scaling_factor(const std::string & unit_str)
+{
+  double scaling_factor = 1.0;
+  if (unit_str == "mm")
+  {
+    scaling_factor = 1e3;
+  }
+  if (unit_str == "mm/s")
+  {
+    scaling_factor = 1e3;
+  }
+  if (unit_str == "rpm")
+  {
+    scaling_factor = 60.0 / (2.0 * M_PI);
+  }
+  return scaling_factor;
+}
+
 void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
 {
   RCLCPP_INFO(
@@ -437,8 +456,11 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
       std::string ua_id_str;
       UAType ua_type;
       size_t num_elements = 1;
-      size_t index = 0;  // By default the OPC UA element is considered scalar
-
+      size_t index = 0;                 // By default the OPC UA element is considered scalar
+      double min_value = std::nan("");  // NaN by default
+      double max_value = std::nan("");
+      double scaling_factor = 1.0;
+      std::string unit;
       // Check if all necessary parameters exist
       try
       {
@@ -454,6 +476,26 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
         if (descr.interface_info.parameters.count("index"))
         {
           index = std::stoul(descr.interface_info.parameters.at("index"));
+        }
+
+        if (descr.interface_info.parameters.count("min"))
+        {
+          min_value = std::stod(descr.interface_info.parameters.at("min"));
+        }
+        if (descr.interface_info.parameters.count("max"))
+        {
+          max_value = stod(descr.interface_info.parameters.at("max"));
+        }
+
+        // Check if the scaling factor is already defined in the URDF
+        if (descr.interface_info.parameters.count("scaling_factor"))
+        {
+          scaling_factor = stod(descr.interface_info.parameters.at("scaling_factor"));
+        }
+        else
+        {  // if not, use a function to convert unit to scaling factor
+          unit = descr.interface_info.parameters.at("unit");
+          scaling_factor = unit_to_scaling_factor(unit);
         }
       }
       catch (const std::exception & e)
@@ -476,6 +518,9 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
         current_state_interface_ua_node.ua_identifier);
       current_state_interface_ua_node.ua_type = ua_type;
       current_state_interface_ua_node.num_elements = num_elements;
+      current_state_interface_ua_node.min_value = min_value;
+      current_state_interface_ua_node.max_value = max_value;
+      current_state_interface_ua_node.scaling_factor = scaling_factor;
 
       // Find if a state_interface with the same NodeId was already processed
       auto same_nodeid_state_interface_node =
@@ -524,6 +569,10 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
       UAType ua_type;
       size_t num_elements = 1;
       size_t index = 0;
+      double min_value = std::nan("");
+      double max_value = std::nan("");
+      double scaling_factor = 1.0;
+      std::string unit;
 
       // Check if all necessary parameters exist
       try
@@ -540,6 +589,24 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
         if (descr.interface_info.parameters.count("index"))
         {
           index = std::stoul(descr.interface_info.parameters.at("index"));
+        }
+        if (descr.interface_info.parameters.count("min"))
+        {
+          min_value = std::stod(descr.interface_info.parameters.at("min"));
+        }
+        if (descr.interface_info.parameters.count("max"))
+        {
+          max_value = stod(descr.interface_info.parameters.at("max"));
+        }
+        // Check if the scaling factor is already defined in the URDF
+        if (descr.interface_info.parameters.count("scaling_factor"))
+        {
+          scaling_factor = stod(descr.interface_info.parameters.at("scaling_factor"));
+        }
+        else
+        {  // if not, use a function to convert unit to scaling factor
+          unit = descr.interface_info.parameters.at("unit");
+          scaling_factor = unit_to_scaling_factor(unit);
         }
       }
       catch (const std::exception & e)
@@ -560,6 +627,9 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
         current_command_interface_ua_node.ua_identifier);
       current_command_interface_ua_node.ua_type = ua_type;
       current_command_interface_ua_node.num_elements = num_elements;
+      current_command_interface_ua_node.min_value = min_value;
+      current_command_interface_ua_node.max_value = max_value;
+      current_command_interface_ua_node.scaling_factor = scaling_factor;
 
       /* Fallback State Interface Name = State interface with the same NodeId */
       auto same_nodeid_state_interface_node =
@@ -912,8 +982,7 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
       ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
 
       RCLCPP_INFO(
-          getLogger(),
-          "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
+        getLogger(), "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
     }
     else  // if the command interface is an array
     {
@@ -1128,7 +1197,7 @@ std::vector<double> OPCUAHardwareInterface::get_command_vector(
 
     if (std::isnan(current_command))
     {
-      return command_vector; // if any command in an array is NaN, skip writing this cycle
+      return command_vector;  // if any command in an array is NaN, skip writing this cycle
     }
     command_vector.push_back(current_command);
   }
