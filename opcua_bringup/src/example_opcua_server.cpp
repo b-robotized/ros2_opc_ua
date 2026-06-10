@@ -823,6 +823,7 @@ int main(int argc, char ** argv)
 
       auto position = jointPositionNode.readValue();
       position = 200.0 * static_cast<double>(std::sin(angle));
+      std::cout << "Position: " << position.to<double>() << std::endl;
 
       // std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
       //           << std::endl;
