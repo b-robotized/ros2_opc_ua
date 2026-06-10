@@ -786,6 +786,24 @@ int main(int argc, char ** argv)
       .setValueRank(opcua::ValueRank::OneDimension)  //! (c.f common.hpp line 157)
       .setValue(opcua::Variant{std::vector<UA_Boolean>{UA_FALSE, UA_TRUE}}));
 
+  opcua::Node velocityNode = parentNode.addVariable(
+    {1, 4}, "Velocity Scalar",
+    opcua::VariableAttributes{}
+      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+      .setDisplayName({"en-US", "Mock joint Velocity"})
+      .setDataType(DataTypeId::Float)
+      .setValueRank(opcua::ValueRank::Scalar)
+      .setValue(opcua::Variant{0.0f}));
+
+  opcua::Node jointPositionNode = parentNode.addVariable(
+    {1, 4}, "Velocity Scalar",
+    opcua::VariableAttributes{}
+      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+      .setDisplayName({"en-US", "Mock Joint Position"})
+      .setDataType(DataTypeId::Float)
+      .setValueRank(opcua::ValueRank::Scalar)
+      .setValue(opcua::Variant{0.0f}));
+
   // Add a callback fucnction to simulate change over time
   size_t counter = 0;
   const double interval = 500;  // milliseconds
@@ -800,15 +818,22 @@ int main(int argc, char ** argv)
       currentPos[0] = commandPos[0] * std::sin(angle);
       currentPos[1] = commandPos[1] * std::cos(angle);
 
-      std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
-                << std::endl;
-      std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]"
-                << std::endl;
+      auto velocity = velocityNode.readValue();
+      std::cout << "Velocity: " << velocity.to<float>() << std::endl;
+
+      auto position = jointPositionNode.readValue();
+      position = 200 * std::sin(angle);
+
+      // std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
+      //           << std::endl;
+      // std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]"
+      //           << std::endl;
 
       currentPosNode.writeValue(opcua::Variant(currentPos));
+      jointPositionNode.writeValue(opcua::Variant(position));
 
       auto answerVal = myIntegerNode.readValue();
-      std::cout << "The answer is: " << answerVal.to<int>() << std::endl;
+      // std::cout << "The answer is: " << answerVal.to<int>() << std::endl;
     },
     interval);
 

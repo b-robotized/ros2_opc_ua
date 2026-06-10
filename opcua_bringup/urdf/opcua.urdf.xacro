@@ -14,6 +14,15 @@
   <!-- create link fixed to the "world" -->
   <link name="world"/>
 
+  <link name="mock_link"/>
+  <joint name="mock_passive_joint" type="continuous">
+    <parent link="world"/>
+    <child link="mock_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+
   <xacro:opcua_ros2_control
     name="opcua_bot"
     mock_hardware="$(arg mock_hardware)"
