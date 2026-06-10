@@ -587,7 +587,7 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
         else
         {  // if not, use a function to convert unit to scaling factor
           unit = descr.interface_info.parameters.at("unit");
-          scaling_factor = unit_to_scaling_factor(unit);
+          scaling_factor = 1 / unit_to_scaling_factor(unit);
         }
       }
       catch (const std::exception & e)
@@ -986,7 +986,7 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
       }
       command_interface_ua_node.last_command_values[0] = val;
 
-      // scale and clamp the value gbefore sending to PLC
+      // scale and clamp the value before sending to PLC
       val = scale(val, scaling_factor);
       clamp(command_interface_name, val, min, max);
       ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
@@ -1195,6 +1195,9 @@ std::vector<double> OPCUAHardwareInterface::get_command_vector(
   double current_command;
   std::string current_command_interface_name;
   std::string current_fallback_interface_name;
+  double scaling_factor = command_ua_node.scaling_factor;
+  double min = command_ua_node.min_value;
+  double max = command_ua_node.max_value;
 
   for (size_t i = 0; i < command_ua_node.num_elements; ++i)
   {
@@ -1202,6 +1205,10 @@ std::vector<double> OPCUAHardwareInterface::get_command_vector(
     current_fallback_interface_name = command_ua_node.fallback_state_interface_names.at(i);
 
     current_command = get_command(current_command_interface_name);
+
+    // Apply scaling and clamping
+    current_command = scale(current_command, scaling_factor);
+    clamp(current_command_interface_name, current_command, min, max);
 
     set_command(current_command_interface_name, std::numeric_limits<double>::quiet_NaN());
 
