@@ -54,6 +54,9 @@ struct StateInterfaceUANode
   uint32_t ua_identifier;
   UAType ua_type;
   size_t num_elements;
+  double min_value;
+  double max_value;
+  double scaling_factor;
   std::map<size_t, std::string>
     state_interface_names;  // If the OPC UA variable is scalar, contains only one pair element
 };
@@ -64,6 +67,9 @@ struct CommandInterfaceUANode
   uint32_t ua_identifier;
   UAType ua_type;
   size_t num_elements;
+  double min_value;
+  double max_value;
+  double scaling_factor;
   std::map<size_t, std::string> command_interface_names;
 
   // TODO: no fallback at all! the server is stateful ,we're not streaming
@@ -113,6 +119,7 @@ private:
   void populate_read_items();
 
   double get_interface_value(UAType ua_type, const opcua::Variant & ua_variant);
+  double unit_to_scaling_factor(const std::string & unit_str);
 
   std::vector<double> get_command_vector(const CommandInterfaceUANode & command_ua_node);
   opcua::Variant get_scalar_command_variant(UAType ua_type, double val);
