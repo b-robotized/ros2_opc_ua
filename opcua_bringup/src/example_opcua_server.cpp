@@ -791,18 +791,18 @@ int main(int argc, char ** argv)
     opcua::VariableAttributes{}
       .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
       .setDisplayName({"en-US", "Mock joint Velocity"})
-      .setDataType(DataTypeId::Float)
+      .setDataType(DataTypeId::Double)
       .setValueRank(opcua::ValueRank::Scalar)
-      .setValue(opcua::Variant{0.0f}));
+      .setValue(opcua::Variant{0.0}));
 
   opcua::Node jointPositionNode = parentNode.addVariable(
-    {1, 4}, "Velocity Scalar",
+    {1, 5}, "Position Scalar",
     opcua::VariableAttributes{}
       .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
       .setDisplayName({"en-US", "Mock Joint Position"})
-      .setDataType(DataTypeId::Float)
+      .setDataType(DataTypeId::Double)
       .setValueRank(opcua::ValueRank::Scalar)
-      .setValue(opcua::Variant{0.0f}));
+      .setValue(opcua::Variant{0.0}));
 
   // Add a callback fucnction to simulate change over time
   size_t counter = 0;
@@ -819,10 +819,10 @@ int main(int argc, char ** argv)
       currentPos[1] = commandPos[1] * std::cos(angle);
 
       auto velocity = velocityNode.readValue();
-      std::cout << "Velocity: " << velocity.to<float>() << std::endl;
+      std::cout << "Velocity: " << velocity.to<double>() << std::endl;
 
       auto position = jointPositionNode.readValue();
-      position = 200 * std::sin(angle);
+      position = 200.0 * static_cast<double>(std::sin(angle));
 
       // std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
       //           << std::endl;
