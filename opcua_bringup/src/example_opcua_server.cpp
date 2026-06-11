@@ -818,20 +818,15 @@ int main(int argc, char ** argv)
       currentPos[0] = commandPos[0] * std::sin(angle);
       currentPos[1] = commandPos[1] * std::cos(angle);
 
-      auto velocity = velocityNode.readValue();
-      std::cout << "Velocity: " << velocity.to<double>() << std::endl;
+      const double vel = velocityNode.readValue().to<double>();
+      double pos = jointPositionNode.readValue().to<double>();
+      const double dt = interval / 1000.0;         // 500ms = 0.5s
+      pos = std::clamp(pos + vel * dt, 0.0, 0.2);  // Stay within URDF limits: lower=0, upper=0.2
 
-      auto position = jointPositionNode.readValue();
-      position = 200.0 * static_cast<double>(std::sin(angle));
-      std::cout << "Position: " << position.to<double>() << std::endl;
-
-      // std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
-      //           << std::endl;
-      // std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]"
-      //           << std::endl;
+      std::cout << "Mock Joint Velocity: " << vel << " ,  Position: " << pos << std::endl;
 
       currentPosNode.writeValue(opcua::Variant(currentPos));
-      jointPositionNode.writeValue(opcua::Variant(position));
+      jointPositionNode.writeValue(opcua::Variant{pos});
 
       auto answerVal = myIntegerNode.readValue();
       // std::cout << "The answer is: " << answerVal.to<int>() << std::endl;
