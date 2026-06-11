@@ -441,7 +441,6 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
       double min_value = std::nan("");  // NaN by default
       double max_value = std::nan("");
       double scaling_factor = 1.0;
-      std::string unit;
       // Check if all necessary parameters exist
       try
       {
@@ -468,15 +467,9 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
           max_value = stod(descr.interface_info.parameters.at("max"));
         }
 
-        // Check if the scaling factor is already defined in the URDF
         if (descr.interface_info.parameters.count("scaling_factor"))
         {
           scaling_factor = stod(descr.interface_info.parameters.at("scaling_factor"));
-        }
-        else
-        {  // if not, use a function to convert unit to scaling factor
-          unit = descr.interface_info.parameters.at("unit");
-          scaling_factor = unit_to_scaling_factor(unit);
         }
       }
       catch (const std::exception & e)
@@ -553,7 +546,6 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
       double min_value = std::nan("");
       double max_value = std::nan("");
       double scaling_factor = 1.0;
-      std::string unit;
 
       // Check if all necessary parameters exist
       try
@@ -579,15 +571,9 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
         {
           max_value = stod(descr.interface_info.parameters.at("max"));
         }
-        // Check if the scaling factor is already defined in the URDF
         if (descr.interface_info.parameters.count("scaling_factor"))
         {
           scaling_factor = stod(descr.interface_info.parameters.at("scaling_factor"));
-        }
-        else
-        {  // if not, use a function to convert unit to scaling factor
-          unit = descr.interface_info.parameters.at("unit");
-          scaling_factor = 1 / unit_to_scaling_factor(unit);
         }
       }
       catch (const std::exception & e)
@@ -1489,24 +1475,6 @@ opcua::Variant OPCUAHardwareInterface::get_array_command_variant(
   return command_variant;
 }
 
-// Converts declared units to SI
-double OPCUAHardwareInterface::unit_to_scaling_factor(const std::string & unit_str)
-{
-  double scaling_factor = 1.0;
-  if (unit_str == "mm")
-  {
-    scaling_factor = 1e-3;
-  }
-  if (unit_str == "mm/s")
-  {
-    scaling_factor = 1e-3;
-  }
-  if (unit_str == "rpm")
-  {
-    scaling_factor = (2.0 * M_PI) / 60.0;
-  }
-  return scaling_factor;
-}
 
 void OPCUAHardwareInterface::clamp(
   const std::string & interface_name, double & interface_val, const double min, const double max)

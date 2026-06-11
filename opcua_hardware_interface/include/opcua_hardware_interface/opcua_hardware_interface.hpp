@@ -119,7 +119,6 @@ private:
   void populate_read_items();
 
   double get_interface_value(UAType ua_type, const opcua::Variant & ua_variant);
-  double unit_to_scaling_factor(const std::string & unit_str);
   void clamp(
     const std::string & interface_name, double & interface_val, const double min, const double max);
   double scale(double interface_val, const double scaling_factor);

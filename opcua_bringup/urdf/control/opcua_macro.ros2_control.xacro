@@ -54,9 +54,9 @@
             </gpio>
 
             <joint name="mock_joint">
-                <xacro:command_interface_OPCUA name="velocity" data_type="double" ua_type="UA_Double" ua_ns="1" ua_identifier="4" unit="mm/s" min_val="0.0" max_val="500.0"/>
-                <xacro:state_interface_OPCUA name="velocity" data_type="double" ua_type="UA_Double" ua_ns="1" ua_identifier="4" unit="mm/s" min_val="0.0" max_val="500.0"/>
-                <xacro:state_interface_OPCUA name="position" data_type="double" ua_type="UA_Double" ua_ns="1" ua_identifier="5" unit="mm" min_val="0.0" max_val="100.0"/>
+                <xacro:command_interface_OPCUA name="velocity" data_type="double" ua_type="UA_Double" ua_ns="1" ua_identifier="4" min_val="-0.5" max_val="0.5"/>
+                <xacro:state_interface_OPCUA name="velocity" data_type="double" ua_type="UA_Double" ua_ns="1" ua_identifier="4" min_val="-0.5" max_val="0.5"/>
+                <xacro:state_interface_OPCUA name="position" data_type="double" ua_type="UA_Double" ua_ns="1" ua_identifier="5" min_val="0.0" max_val="0.2"/>
             </joint>
 
         </ros2_control>
