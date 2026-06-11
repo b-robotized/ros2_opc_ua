@@ -27,6 +27,7 @@ opcua_controller:
 
 mock_joint_velocity_controller:
   ros__parameters:
-    type: velocity_controllers/JointGroupVelocityController
+    type: forward_command_controller/ForwardCommandController
     joints:
       - mock_joint
+    interface_name: velocity 
