@@ -469,7 +469,7 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
 
         if (descr.interface_info.parameters.count("scaling_factor"))
         {
-          scaling_factor = stod(descr.interface_info.parameters.at("scaling_factor"));
+          scaling_factor = 1.0 / stod(descr.interface_info.parameters.at("scaling_factor"));
         }
       }
       catch (const std::exception & e)
@@ -1475,13 +1475,12 @@ opcua::Variant OPCUAHardwareInterface::get_array_command_variant(
   return command_variant;
 }
 
-
 void OPCUAHardwareInterface::clamp(
   const std::string & interface_name, double & interface_val, const double min, const double max)
 {
   if (std::isnan(min) || std::isnan(max))  // Clamping to NaN generates undefined behaviour
   {
-    RCLCPP_WARN(
+    RCLCPP_WARN_ONCE(
       getLogger(), "Undefined boundaries for the interface %s. Clamping will not be applied!",
       interface_name.c_str());
   }
