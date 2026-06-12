@@ -786,9 +786,30 @@ int main(int argc, char ** argv)
       .setValueRank(opcua::ValueRank::OneDimension)  //! (c.f common.hpp line 157)
       .setValue(opcua::Variant{std::vector<UA_Boolean>{UA_FALSE, UA_TRUE}}));
 
+  opcua::Node velocityNode = parentNode.addVariable(
+    {1, 4}, "Velocity Scalar",
+    opcua::VariableAttributes{}
+      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+      .setDisplayName({"en-US", "Mock joint Velocity"})
+      .setDataType(DataTypeId::Double)
+      .setValueRank(opcua::ValueRank::Scalar)
+      .setValue(opcua::Variant{0.0}));
+
+  opcua::Node jointPositionNode = parentNode.addVariable(
+    {1, 5}, "Position Scalar",
+    opcua::VariableAttributes{}
+      .setAccessLevel(AccessLevel::CurrentRead | AccessLevel::CurrentWrite)
+      .setDisplayName({"en-US", "Mock Joint Position"})
+      .setDataType(DataTypeId::Double)
+      .setValueRank(opcua::ValueRank::Scalar)
+      .setValue(opcua::Variant{100.0}));  // start at midpoint (mm) so both directions are free
+
   // Add a callback fucnction to simulate change over time
   size_t counter = 0;
-  const double interval = 500;  // milliseconds
+  const double interval = 100;      // milliseconds — finer resolution
+  const double max_accel = 10.0;    // mm/s² — ramp rate toward commanded velocity
+  double simulated_velocity = 0.0;  // mm/s — current simulated velocity (ramped)
+
   const opcua::CallbackId id1 = opcua::addRepeatedCallback(
     server,
     [&]
@@ -800,15 +821,31 @@ int main(int argc, char ** argv)
       currentPos[0] = commandPos[0] * std::sin(angle);
       currentPos[1] = commandPos[1] * std::cos(angle);
 
-      std::cout << "commandPos is: [ " << commandPos[0] << " , " << commandPos[1] << " ]"
-                << std::endl;
-      std::cout << "CurrentPos is: [ " << currentPos[0] << " , " << currentPos[1] << " ]"
-                << std::endl;
+      const double target_vel = velocityNode.readValue().to<double>();  // mm/s (commanded)
+      double pos = jointPositionNode.readValue().to<double>();          // mm
+      const double dt = interval / 1000.0;                              // s
+
+      // Ramp simulated_velocity toward target_vel at max_accel
+      const double dv_max = max_accel * dt;
+      if (simulated_velocity < target_vel)
+      {
+        simulated_velocity = std::min(simulated_velocity + dv_max, target_vel);
+      }
+      else
+      {
+        simulated_velocity = std::max(simulated_velocity - dv_max, target_vel);
+      }
+
+      pos = std::clamp(pos + simulated_velocity * dt, 0.0, 200.0);  // limits: 0..200 mm
+
+      std::cout << "Mock Joint Velocity: cmd=" << target_vel << " mm/s  sim=" << simulated_velocity
+                << " mm/s  Position: " << pos << " mm" << std::endl;
 
       currentPosNode.writeValue(opcua::Variant(currentPos));
+      jointPositionNode.writeValue(opcua::Variant{pos});
 
       auto answerVal = myIntegerNode.readValue();
-      std::cout << "The answer is: " << answerVal.to<int>() << std::endl;
+      // std::cout << "The answer is: " << answerVal.to<int>() << std::endl;
     },
     interval);
 

@@ -54,6 +54,9 @@ struct StateInterfaceUANode
   uint32_t ua_identifier;
   UAType ua_type;
   size_t num_elements;
+  double min_value;
+  double max_value;
+  double scaling_factor;
   std::map<size_t, std::string>
     state_interface_names;  // If the OPC UA variable is scalar, contains only one pair element
 };
@@ -64,6 +67,9 @@ struct CommandInterfaceUANode
   uint32_t ua_identifier;
   UAType ua_type;
   size_t num_elements;
+  double min_value;
+  double max_value;
+  double scaling_factor;
   std::map<size_t, std::string> command_interface_names;
 
   // TODO: no fallback at all! the server is stateful ,we're not streaming
@@ -99,6 +105,19 @@ public:
 private:
   rclcpp::Logger getLogger() { return rclcpp::get_logger("OPCUAHardwareInterface"); }
 
+  // Template function to look for URDF params for the interfaces, convert them to desired type and
+  // assign their value to a variable
+  template <typename MapType, typename T, typename Func>
+  inline void update_param_if_exists(
+    const MapType & map, const std::string & key, T & target, Func conversion_func)
+  {
+    auto it = map.find(key);
+    if (it != map.end())
+    {
+      target = conversion_func(it->second);
+    }
+  }
+
   // ========= OPC UA ==============================
   // OPC UA type helper
   UAType strToUAType(const std::string & type_str);
@@ -113,7 +132,8 @@ private:
   void populate_read_items();
 
   double get_interface_value(UAType ua_type, const opcua::Variant & ua_variant);
-
+  void clamp(
+    const std::string & interface_name, double & interface_val, const double min, const double max);
   std::vector<double> get_command_vector(const CommandInterfaceUANode & command_ua_node);
   opcua::Variant get_scalar_command_variant(UAType ua_type, double val);
   opcua::Variant get_array_command_variant(UAType ua_type, std::vector<double> & command_array);

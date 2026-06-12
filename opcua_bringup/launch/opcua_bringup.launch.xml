@@ -19,5 +19,6 @@
 
     <node pkg="controller_manager" exec="spawner" name="jsb_spawner" output="screen" args="joint_state_broadcaster -p $(var controllers_file_path)"/>
     <node pkg="controller_manager" exec="spawner" name="opcua_ctrl_spawner" output="screen" args="opcua_controller -p $(var controllers_file_path)"/>
+    <node pkg="controller_manager" exec="spawner" name="mock_joint_ctrl_spawner" output="screen" args="mock_joint_velocity_controller -p $(var controllers_file_path)"/>
 
 </launch>

@@ -24,3 +24,10 @@ opcua_controller:
           - currentPos_0
           - currentPos_1
           - my_integer_interface
+
+mock_joint_velocity_controller:
+  ros__parameters:
+    type: forward_command_controller/ForwardCommandController
+    joints:
+      - mock_joint
+    interface_name: velocity 

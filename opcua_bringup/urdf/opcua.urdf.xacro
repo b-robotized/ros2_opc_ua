@@ -14,6 +14,16 @@
   <!-- create link fixed to the "world" -->
   <link name="world"/>
 
+  <link name="mock_link"/>
+  <joint name="mock_joint" type="prismatic">
+    <parent link="world"/>
+    <child link="mock_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0" upper="0.2" effort="100" velocity="0.5"/>
+  </joint>
+
+
   <xacro:opcua_ros2_control
     name="opcua_bot"
     mock_hardware="$(arg mock_hardware)"
