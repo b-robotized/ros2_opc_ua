@@ -802,11 +802,14 @@ int main(int argc, char ** argv)
       .setDisplayName({"en-US", "Mock Joint Position"})
       .setDataType(DataTypeId::Double)
       .setValueRank(opcua::ValueRank::Scalar)
-      .setValue(opcua::Variant{0.0}));
+      .setValue(opcua::Variant{100.0}));  // start at midpoint (mm) so both directions are free
 
   // Add a callback fucnction to simulate change over time
   size_t counter = 0;
-  const double interval = 500;  // milliseconds
+  const double interval = 100;      // milliseconds — finer resolution
+  const double max_accel = 10.0;    // mm/s² — ramp rate toward commanded velocity
+  double simulated_velocity = 0.0;  // mm/s — current simulated velocity (ramped)
+
   const opcua::CallbackId id1 = opcua::addRepeatedCallback(
     server,
     [&]
@@ -818,12 +821,25 @@ int main(int argc, char ** argv)
       currentPos[0] = commandPos[0] * std::sin(angle);
       currentPos[1] = commandPos[1] * std::cos(angle);
 
-      const double vel = velocityNode.readValue().to<double>();  // mm/s
-      double pos = jointPositionNode.readValue().to<double>();    // mm
-      const double dt = interval / 1000.0;                        // 500ms = 0.5s
-      pos = std::clamp(pos + vel * dt, 0.0, 200.0);               // limits: 0..200 mm
+      const double target_vel = velocityNode.readValue().to<double>();  // mm/s (commanded)
+      double pos = jointPositionNode.readValue().to<double>();          // mm
+      const double dt = interval / 1000.0;                              // s
 
-      std::cout << "Mock Joint Velocity: " << vel << " mm/s,  Position: " << pos << " mm" << std::endl;
+      // Ramp simulated_velocity toward target_vel at max_accel
+      const double dv_max = max_accel * dt;
+      if (simulated_velocity < target_vel)
+      {
+        simulated_velocity = std::min(simulated_velocity + dv_max, target_vel);
+      }
+      else
+      {
+        simulated_velocity = std::max(simulated_velocity - dv_max, target_vel);
+      }
+
+      pos = std::clamp(pos + simulated_velocity * dt, 0.0, 200.0);  // limits: 0..200 mm
+
+      std::cout << "Mock Joint Velocity: cmd=" << target_vel << " mm/s  sim=" << simulated_velocity
+                << " mm/s  Position: " << pos << " mm" << std::endl;
 
       currentPosNode.writeValue(opcua::Variant(currentPos));
       jointPositionNode.writeValue(opcua::Variant{pos});
