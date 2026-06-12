@@ -437,9 +437,9 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
       std::string ua_id_str;
       UAType ua_type;
       size_t num_elements = 1;
-      size_t index = 0;                 // By default the OPC UA element is considered scalar
-      double min_value = std::nan("");  // NaN by default
-      double max_value = std::nan("");
+      size_t index = 0;           // By default the OPC UA element is considered scalar
+      double min = std::nan("");  // NaN by default
+      double max = std::nan("");
       double scaling_factor = 1.0;
       // Check if all necessary parameters exist
       try
@@ -448,29 +448,22 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
         ua_id_str = descr.interface_info.parameters.at("ua_identifier");
         ua_type = strToUAType(descr.interface_info.parameters.at("ua_type"));
 
-        // Check if state_interface refers to an OPC UA Array element
-        if (descr.interface_info.parameters.count("n_elements"))
-        {
-          num_elements = std::stoul(descr.interface_info.parameters.at("n_elements"));
-        }
-        if (descr.interface_info.parameters.count("index"))
-        {
-          index = std::stoul(descr.interface_info.parameters.at("index"));
-        }
+        update_param_if_exists(
+          descr.interface_info.parameters, "n_elements", num_elements,
+          [](const auto & v) { return std::stoul(v); });
 
-        if (descr.interface_info.parameters.count("min"))
-        {
-          min_value = std::stod(descr.interface_info.parameters.at("min"));
-        }
-        if (descr.interface_info.parameters.count("max"))
-        {
-          max_value = stod(descr.interface_info.parameters.at("max"));
-        }
+        update_param_if_exists(
+          descr.interface_info.parameters, "index", index,
+          [](const auto & v) { return std::stoul(v); });
 
-        if (descr.interface_info.parameters.count("scaling_factor"))
-        {
-          scaling_factor = 1.0 / stod(descr.interface_info.parameters.at("scaling_factor"));
-        }
+        update_param_if_exists(
+          descr.interface_info.parameters, "min", min, [](const auto & v) { return std::stod(v); });
+        update_param_if_exists(
+          descr.interface_info.parameters, "max", max, [](const auto & v) { return std::stod(v); });
+
+        update_param_if_exists(
+          descr.interface_info.parameters, "scaling_factor", scaling_factor,
+          [](const auto & v) { return 1.0 / std::stod(v); });
       }
       catch (const std::exception & e)
       {
@@ -492,8 +485,8 @@ void OPCUAHardwareInterface::populate_state_interfaces_node_ids()
         current_state_interface_ua_node.ua_identifier);
       current_state_interface_ua_node.ua_type = ua_type;
       current_state_interface_ua_node.num_elements = num_elements;
-      current_state_interface_ua_node.min_value = min_value;
-      current_state_interface_ua_node.max_value = max_value;
+      current_state_interface_ua_node.min_value = min;
+      current_state_interface_ua_node.max_value = max;
       current_state_interface_ua_node.scaling_factor = scaling_factor;
 
       // Find if a state_interface with the same NodeId was already processed
@@ -543,8 +536,8 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
       UAType ua_type;
       size_t num_elements = 1;
       size_t index = 0;
-      double min_value = std::nan("");
-      double max_value = std::nan("");
+      double min = std::nan("");
+      double max = std::nan("");
       double scaling_factor = 1.0;
 
       // Check if all necessary parameters exist
@@ -554,27 +547,22 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
         ua_id_str = descr.interface_info.parameters.at("ua_identifier");
         ua_type = strToUAType(descr.interface_info.parameters.at("ua_type"));
 
-        // Check if state_interface refers to an OPC UA Array element
-        if (descr.interface_info.parameters.count("n_elements"))
-        {
-          num_elements = std::stoul(descr.interface_info.parameters.at("n_elements"));
-        }
-        if (descr.interface_info.parameters.count("index"))
-        {
-          index = std::stoul(descr.interface_info.parameters.at("index"));
-        }
-        if (descr.interface_info.parameters.count("min"))
-        {
-          min_value = std::stod(descr.interface_info.parameters.at("min"));
-        }
-        if (descr.interface_info.parameters.count("max"))
-        {
-          max_value = stod(descr.interface_info.parameters.at("max"));
-        }
-        if (descr.interface_info.parameters.count("scaling_factor"))
-        {
-          scaling_factor = stod(descr.interface_info.parameters.at("scaling_factor"));
-        }
+        update_param_if_exists(
+          descr.interface_info.parameters, "n_elements", num_elements,
+          [](const auto & v) { return std::stoul(v); });
+
+        update_param_if_exists(
+          descr.interface_info.parameters, "index", index,
+          [](const auto & v) { return std::stoul(v); });
+
+        update_param_if_exists(
+          descr.interface_info.parameters, "min", min, [](const auto & v) { return std::stod(v); });
+        update_param_if_exists(
+          descr.interface_info.parameters, "max", max, [](const auto & v) { return std::stod(v); });
+
+        update_param_if_exists(
+          descr.interface_info.parameters, "scaling_factor", scaling_factor,
+          [](const auto & v) { return std::stod(v); });
       }
       catch (const std::exception & e)
       {
@@ -594,8 +582,8 @@ void OPCUAHardwareInterface::populate_command_interfaces_node_ids()
         current_command_interface_ua_node.ua_identifier);
       current_command_interface_ua_node.ua_type = ua_type;
       current_command_interface_ua_node.num_elements = num_elements;
-      current_command_interface_ua_node.min_value = min_value;
-      current_command_interface_ua_node.max_value = max_value;
+      current_command_interface_ua_node.min_value = min;
+      current_command_interface_ua_node.max_value = max;
       current_command_interface_ua_node.scaling_factor = scaling_factor;
 
       /* Fallback State Interface Name = State interface with the same NodeId */
@@ -743,9 +731,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
     const opcua::Variant & ua_variant = read_result.value();
 
     std::string interface_name;
-    double interface_value;  // unit: same as the one in the URDF
-    double min = state_interface_ua_node.min_value;
-    double max = state_interface_ua_node.max_value;
+    double interface_value;
     double scaling_factor = state_interface_ua_node.scaling_factor;
     std::vector<double> values;
 

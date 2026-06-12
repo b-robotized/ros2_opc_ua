@@ -105,6 +105,19 @@ public:
 private:
   rclcpp::Logger getLogger() { return rclcpp::get_logger("OPCUAHardwareInterface"); }
 
+  // Template function to look for URDF params for the interfaces, convert them to desired type and
+  // assign their value to a variable
+  template <typename MapType, typename T, typename Func>
+  inline void update_param_if_exists(
+    const MapType & map, const std::string & key, T & target, Func conversion_func)
+  {
+    auto it = map.find(key);
+    if (it != map.end())
+    {
+      target = conversion_func(it->second);
+    }
+  }
+
   // ========= OPC UA ==============================
   // OPC UA type helper
   UAType strToUAType(const std::string & type_str);
