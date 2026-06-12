@@ -134,8 +134,6 @@ private:
   double get_interface_value(UAType ua_type, const opcua::Variant & ua_variant);
   void clamp(
     const std::string & interface_name, double & interface_val, const double min, const double max);
-  double scale(double interface_val, const double scaling_factor);
-
   std::vector<double> get_command_vector(const CommandInterfaceUANode & command_ua_node);
   opcua::Variant get_scalar_command_variant(UAType ua_type, double val);
   opcua::Variant get_array_command_variant(UAType ua_type, std::vector<double> & command_array);

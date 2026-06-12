@@ -740,7 +740,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
     {
       interface_name = state_interface_ua_node.state_interface_names.at(0);
       interface_value = get_interface_value(state_interface_ua_node.ua_type, ua_variant);
-      interface_value = scale(interface_value, scaling_factor);
+      interface_value *= scaling_factor;
 
       if (std::isnan(interface_value))
       {
@@ -792,7 +792,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
-          interface_value = scale(interface_value, scaling_factor);
+          interface_value *= scaling_factor;
           set_state(interface_name, interface_value);
         }
       }
@@ -804,7 +804,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
-          interface_value = scale(interface_value, scaling_factor);
+          interface_value *= scaling_factor;
           set_state(interface_name, interface_value);
         }
       }
@@ -816,7 +816,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
-          interface_value = scale(interface_value, scaling_factor);
+          interface_value *= scaling_factor;
           set_state(interface_name, interface_value);
         }
       }
@@ -828,7 +828,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
-          interface_value = scale(interface_value, scaling_factor);
+          interface_value *= scaling_factor;
           set_state(interface_name, interface_value);
         }
       }
@@ -840,7 +840,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
-          interface_value = scale(interface_value, scaling_factor);
+          interface_value *= scaling_factor;
           set_state(interface_name, interface_value);
         }
       }
@@ -852,7 +852,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
-          interface_value = scale(interface_value, scaling_factor);
+          interface_value *= scaling_factor;
           set_state(interface_name, interface_value);
         }
       }
@@ -864,7 +864,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
-          interface_value = scale(interface_value, scaling_factor);
+          interface_value *= scaling_factor;
           set_state(interface_name, interface_value);
         }
       }
@@ -876,7 +876,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
-          interface_value = scale(interface_value, scaling_factor);
+          interface_value *= scaling_factor;
           set_state(interface_name, interface_value);
         }
       }
@@ -888,7 +888,7 @@ hardware_interface::return_type OPCUAHardwareInterface::read(
         {
           interface_name = state_interface_ua_node.state_interface_names.at(i);
           interface_value = static_cast<double>(values_vector[i]);
-          interface_value = scale(interface_value, scaling_factor);
+          interface_value *= scaling_factor;
           set_state(interface_name, interface_value);
         }
       }
@@ -949,7 +949,7 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
       command_interface_ua_node.last_command_values[0] = val;
 
       // scale and clamp the value before sending to PLC
-      val = scale(val, scaling_factor);
+      val *= scaling_factor;
       clamp(command_interface_name, val, min, max);
       ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
 
@@ -1169,7 +1169,7 @@ std::vector<double> OPCUAHardwareInterface::get_command_vector(
     current_command = get_command(current_command_interface_name);
 
     // Apply scaling and clamping
-    current_command = scale(current_command, scaling_factor);
+    current_command *= scaling_factor;
     clamp(current_command_interface_name, current_command, min, max);
 
     set_command(current_command_interface_name, std::numeric_limits<double>::quiet_NaN());
@@ -1479,10 +1479,6 @@ void OPCUAHardwareInterface::clamp(
   }
 }
 
-double OPCUAHardwareInterface::scale(double interface_val, const double scaling_factor)
-{
-  return interface_val * scaling_factor;
-}
 
 }  // namespace opcua_hardware_interface
 
