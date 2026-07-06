@@ -674,16 +674,15 @@ bool OPCUAHardwareInterface::check_connection()
   }
   catch (const opcua::BadStatus & e)
   {
-    RCLCPP_ERROR(getLogger(), "OPC UA client connection error: %s. Disconnecting...", e.what());
-    client.disconnect();
-
+    // Disconnect here will stop all reconnection attempts by the EventLoop
+    RCLCPP_ERROR(getLogger(), "OPC UA client connection error: %s.", e.what());
     is_connected = false;
   }
 
   if (!client.isConnected())
   {
     RCLCPP_WARN_THROTTLE(
-      getLogger(), *get_clock(), 2000, "OPC UA client is not connected, skipping. Reconnecting...");
+      getLogger(), *get_clock(), 2000, "OPC UA client is not connected. Reconnecting...");
     is_connected = false;
   }
 
