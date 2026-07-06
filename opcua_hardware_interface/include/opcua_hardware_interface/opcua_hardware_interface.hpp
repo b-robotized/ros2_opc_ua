@@ -16,6 +16,7 @@
 #ifndef OPCUA_HARDWARE_INTERFACE__OPCUA_HARDWARE_INTERFACE_HPP_
 #define OPCUA_HARDWARE_INTERFACE__OPCUA_HARDWARE_INTERFACE_HPP_
 
+#include <chrono>
 #include <limits>
 #include <map>
 #include <string>
@@ -135,6 +136,9 @@ private:
   opcua::ByteString client_cert_;
   opcua::ByteString client_key_;
   opcua::ByteString ca_cert_;
+
+  // Check if reconnection is possible
+  bool check_connection();
 };
 
 }  // namespace opcua_hardware_interface

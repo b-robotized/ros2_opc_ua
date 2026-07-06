@@ -15,7 +15,8 @@
 
 #include <algorithm>  // std::transform
 #include <charconv>   // std::from_chars
-#include <cmath>      //  std::isnan
+#include <chrono>
+#include <cmath>  //  std::isnan
 #include <cstdint>
 #include <fstream>
 #include <limits>
@@ -31,6 +32,7 @@
 
 namespace opcua_hardware_interface
 {
+
 // Helper to read file content
 static opcua::ByteString readFile(const std::string & path)
 {
@@ -64,9 +66,30 @@ hardware_interface::CallbackReturn OPCUAHardwareInterface::on_init(
 hardware_interface::CallbackReturn OPCUAHardwareInterface::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  if (!configure_ua_client())
+  bool configured = false;
+  int max_attempts = 10;
+
+  for (int attempt = 1; attempt <= max_attempts && !configured; ++attempt)
   {
-    RCLCPP_FATAL(getLogger(), "Failed to configure OPC UA client from URDF parameters.");
+    configured = configure_ua_client();
+    if (!configured && attempt < max_attempts)
+    {
+      RCLCPP_WARN(
+        getLogger(), "OPC UA client configuration failed (attempt %d/%d). Retrying in 500 ms...",
+        attempt, max_attempts);
+      if (!get_clock()->sleep_for(rclcpp::Duration::from_seconds(0.5)))
+      {
+        RCLCPP_WARN(getLogger(), "Sleep interrupted, aborting OPC UA connection retries.");
+        break;
+      }
+    }
+  }
+
+  if (!configured)
+  {
+    RCLCPP_FATAL(
+      getLogger(), "Failed to configure OPC UA client from URDF parameters after %d attempts.",
+      max_attempts);
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -641,17 +664,39 @@ void OPCUAHardwareInterface::populate_read_items()
   }
 }
 
+bool OPCUAHardwareInterface::check_connection()
+{
+  bool is_connected = true;
+
+  try
+  {
+    client.runIterate(0);
+  }
+  catch (const opcua::BadStatus & e)
+  {
+    // Disconnect here will stop all reconnection attempts by the EventLoop
+    RCLCPP_ERROR(getLogger(), "OPC UA client connection error: %s.", e.what());
+    is_connected = false;
+  }
+
+  if (!client.isConnected())
+  {
+    RCLCPP_WARN_THROTTLE(
+      getLogger(), *get_clock(), 2000, "OPC UA client is not connected. Reconnecting...");
+    is_connected = false;
+  }
+
+  return is_connected;
+}
+
 hardware_interface::return_type OPCUAHardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
   bool any_item_read_failed = false;
 
-  // Client lost connection to the UA server
-  if (!client.isConnected())
+  if (!check_connection())
   {
-    RCLCPP_ERROR(
-      getLogger(), "Hardware interface lost connection to the server during read operation.");
-    any_item_read_failed = true;
+    return hardware_interface::return_type::ERROR;
   }
 
   // Perform ONE Read Request with all the desired NodeIds
@@ -869,12 +914,9 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
 {
   bool any_item_write_failed = false;
 
-  // Client lost connection to the UA server
-  if (!client.isConnected())
+  if (!check_connection())
   {
-    RCLCPP_ERROR(
-      getLogger(), "Hardware interface lost connection to the server during write operation.");
-    any_item_write_failed = true;
+    return hardware_interface::return_type::ERROR;
   }
 
   // There are no command interfaces to write to
@@ -911,9 +953,8 @@ hardware_interface::return_type OPCUAHardwareInterface::write(
 
       ua_variant = get_scalar_command_variant(command_interface_ua_node.ua_type, val);
 
-      RCLCPP_INFO(
-          getLogger(),
-          "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
+      RCLCPP_DEBUG(
+        getLogger(), "Sending data to server. IF: %s  | %f", command_interface_name.c_str(), val);
     }
     else  // if the command interface is an array
     {
@@ -1128,7 +1169,7 @@ std::vector<double> OPCUAHardwareInterface::get_command_vector(
 
     if (std::isnan(current_command))
     {
-      return command_vector; // if any command in an array is NaN, skip writing this cycle
+      return command_vector;  // if any command in an array is NaN, skip writing this cycle
     }
     command_vector.push_back(current_command);
   }
