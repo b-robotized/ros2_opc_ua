@@ -15,7 +15,8 @@
 
 #include <algorithm>  // std::transform
 #include <charconv>   // std::from_chars
-#include <cmath>      //  std::isnan
+#include <chrono>
+#include <cmath>  //  std::isnan
 #include <cstdint>
 #include <fstream>
 #include <limits>
@@ -31,6 +32,7 @@
 
 namespace opcua_hardware_interface
 {
+
 // Helper to read file content
 static opcua::ByteString readFile(const std::string & path)
 {
@@ -64,9 +66,30 @@ hardware_interface::CallbackReturn OPCUAHardwareInterface::on_init(
 hardware_interface::CallbackReturn OPCUAHardwareInterface::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  if (!configure_ua_client())
+  bool configured = false;
+  int max_attempts = 10;
+
+  for (int attempt = 1; attempt <= max_attempts && !configured; ++attempt)
   {
-    RCLCPP_FATAL(getLogger(), "Failed to configure OPC UA client from URDF parameters.");
+    configured = configure_ua_client();
+    if (!configured && attempt < max_attempts)
+    {
+      RCLCPP_WARN(
+        getLogger(), "OPC UA client configuration failed (attempt %d/%d). Retrying in 500 ms...",
+        attempt, max_attempts);
+      if (!get_clock()->sleep_for(rclcpp::Duration::from_seconds(0.5)))
+      {
+        RCLCPP_WARN(getLogger(), "Sleep interrupted, aborting OPC UA connection retries.");
+        break;
+      }
+    }
+  }
+
+  if (!configured)
+  {
+    RCLCPP_FATAL(
+      getLogger(), "Failed to configure OPC UA client from URDF parameters after %d attempts.",
+      max_attempts);
     return hardware_interface::CallbackReturn::ERROR;
   }
 

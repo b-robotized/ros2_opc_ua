@@ -16,6 +16,7 @@
 #ifndef OPCUA_HARDWARE_INTERFACE__OPCUA_HARDWARE_INTERFACE_HPP_
 #define OPCUA_HARDWARE_INTERFACE__OPCUA_HARDWARE_INTERFACE_HPP_
 
+#include <chrono>
 #include <limits>
 #include <map>
 #include <string>
